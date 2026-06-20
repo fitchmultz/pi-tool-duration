@@ -1,0 +1,37 @@
+{
+  "name": "pi-tool-duration",
+  "version": "0.1.0",
+  "description": "Appends [duration: Xs] to tool results in pi coding agent so the model sees how long a command actually took",
+  "license": "MIT",
+  "keywords": [
+    "pi",
+    "pi-package",
+    "pi-extension",
+    "tool-duration",
+    "observability"
+  ],
+  "files": [
+    "extensions/tool-duration/index.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "check": "node --check extensions/tool-duration/index.ts && npm pack --dry-run"
+  },
+  "pi": {
+    "extensions": [
+      "extensions/tool-duration"
+    ]
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.79.8"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    }
+  }
+}
