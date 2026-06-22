@@ -11,7 +11,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 // ponytail: hardcoded threshold; make configurable (flag/settings) if needed
-const THRESHOLD_MS = 3000;
+const THRESHOLD_MS = 100;
 
 const starts = new Map<string, number>();
 
