@@ -1,7 +1,9 @@
 {
   "name": "pi-tool-duration",
   "version": "0.1.0",
-  "description": "Appends [duration: Xs] to tool results in pi coding agent so the model sees how long a command actually took",
+  "description": "Append model-visible durations to slow Pi tool results",
+  "type": "module",
+  "author": "Mitch Fultz (https://github.com/fitchmultz)",
   "license": "MIT",
   "keywords": [
     "pi",
@@ -10,21 +12,36 @@
     "tool-duration",
     "observability"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fitchmultz/pi-tool-duration.git"
+  },
+  "bugs": {
+    "url": "https://github.com/fitchmultz/pi-tool-duration/issues"
+  },
+  "homepage": "https://github.com/fitchmultz/pi-tool-duration#readme",
+  "engines": {
+    "node": ">=22.19.0"
+  },
   "files": [
     "extensions/tool-duration/index.ts",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
-    "check": "node --check extensions/tool-duration/index.ts && npm pack --dry-run"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.mjs",
+    "check": "npm run typecheck && npm test && npm pack --dry-run"
   },
   "pi": {
     "extensions": [
-      "extensions/tool-duration"
+      "./extensions/tool-duration"
     ]
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.80.1"
+    "@earendil-works/pi-coding-agent": "^0.80.2",
+    "typescript": "^5.9.3"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*"

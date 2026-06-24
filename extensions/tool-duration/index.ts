@@ -1,25 +1,45 @@
 /**
  * pi-tool-duration
  *
- * Appends `[duration: Xs]` to tool results so the model sees how long a call
- * actually took. pi already measures this for the TUI ("Took Xs") but never
- * sends it to the model — so a 1000s command looks identical to a 1s one.
- *
- * Rule: annotate every tool (bash, read, edit, MCP, subagent, ...) only when
- * the run is >= THRESHOLD_MS. Silent on instant calls = clean signal, no noise.
+ * Appends `[duration: Xs]` to slow tool results so the model sees how long a
+ * call actually took. pi already measures this for the TUI ("Took Xs") but the
+ * model does not see that timing.
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-// ponytail: hardcoded threshold; make configurable (flag/settings) if needed
-const THRESHOLD_MS = 100;
+const DEFAULT_THRESHOLD_MS = 1000;
+const DURATION_RE = /^\[duration: \d+(?:\.\d+)?s\]$/;
 
-const starts = new Map<string, number>();
+function parseThreshold(value: unknown): number | undefined {
+  if (typeof value !== "string" && typeof value !== "number") return undefined;
+  if (typeof value === "string" && value.trim() === "") return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+function thresholdMs(pi: ExtensionAPI): number {
+  return (
+    parseThreshold(pi.getFlag("tool-duration-threshold-ms")) ??
+    parseThreshold(process.env.PI_TOOL_DURATION_THRESHOLD_MS) ??
+    DEFAULT_THRESHOLD_MS
+  );
+}
+
+function alreadyAnnotated(content: Array<{ type: string; text?: string }>): boolean {
+  const last = content.at(-1);
+  return last?.type === "text" && typeof last.text === "string" && DURATION_RE.test(last.text);
+}
 
 export default function (pi: ExtensionAPI) {
-  // tool_call fires before execution; tool_result fires after (even on error),
-  // same toolCallId. Returning { content } replaces what the LLM sees.
+  const starts = new Map<string, number>();
+
+  pi.registerFlag("tool-duration-threshold-ms", {
+    description: "Minimum tool duration in milliseconds before appending [duration: Xs] to the model-visible result",
+    type: "string",
+  });
+
   pi.on("tool_call", async (event) => {
-    starts.set(event.toolCallId, Date.now());
+    starts.set(event.toolCallId, performance.now());
   });
 
   pi.on("tool_result", async (event) => {
@@ -27,8 +47,8 @@ export default function (pi: ExtensionAPI) {
     starts.delete(event.toolCallId);
     if (startedAt === undefined) return;
 
-    const ms = Date.now() - startedAt;
-    if (ms < THRESHOLD_MS) return;
+    const ms = performance.now() - startedAt;
+    if (ms < thresholdMs(pi) || alreadyAnnotated(event.content)) return;
 
     return {
       content: [
@@ -38,9 +58,8 @@ export default function (pi: ExtensionAPI) {
     };
   });
 
-  // Reclaim starts for tools blocked/aborted mid-call (tool_result never fires
-  // for them, so they'd otherwise leak). agent_end bounds every turn.
-  pi.on("agent_end", async () => {
-    starts.clear();
-  });
+  const clearStarts = () => starts.clear();
+  pi.on("session_start", clearStarts);
+  pi.on("session_shutdown", clearStarts);
+  pi.on("agent_end", clearStarts);
 }

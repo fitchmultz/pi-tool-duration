@@ -1,77 +1,71 @@
 # pi-tool-duration
 
-Appends `[duration: Xs]` to tool results so the model knows how long a command
-actually took.
+Appends `[duration: Xs]` to slow Pi tool results so the model can tell when a tool actually took time.
 
-```
-$ npm run build
-<output>
-Command exited with code 0
-[duration: 1034.0s]
-```
-
-## Why
-
-pi already measures every command's duration and shows `Took Xs` in the TUI —
-but that number never reaches the model. So to the agent, a 1000-second command
-looks identical to a 1-second one. It can't tell "fast, nothing changed" from
-"slow, something is wrong." This puts the elapsed seconds next to the exit code,
-where the model can reason about it directly.
-
-## How it works
-
-`tool_call` and `tool_result` are matched extension events that share a
-`toolCallId` and fire immediately before/after a tool runs (the result fires
-even on error or timeout). Returning `{ content }` from `tool_result` replaces
-the text the model receives, so the duration is recorded into the message once,
-at the source.
-
-**Every tool** — bash, read, edit, write, grep, find, ls, MCP tools, subagents
-— is annotated when its run is `>= THRESHOLD_MS`. Instant calls stay silent for a
-clean signal; only slow runs (the ones that matter) get stamped.
-
-## Install
-
-```bash
-pi install ./pi-tool-duration      # local
-# or after publishing
-pi install npm:pi-tool-duration
-```
-
-## Try without installing
-
-```bash
-pi -e ./pi-tool-duration
-```
-
-## Verify
-
-In a session running the extension:
-
-```bash
-bash: sleep 5; echo hi
-```
-
-The model sees:
-
-```
+```text
 hi
 [duration: 5.0s]
 ```
 
-An instant command stays silent:
+## Why
 
-```bash
-bash: echo fast
+Pi already shows tool timing in the TUI (`Took Xs`), but that timing is UI-only. This extension adds the elapsed time to the model-visible tool result for slow calls.
+
+## How it works
+
+The extension matches Pi `tool_call` and `tool_result` events by `toolCallId`. When elapsed time is at or above the configured threshold, it appends one text block:
+
+```text
+[duration: 5.0s]
 ```
 
-The TUI continues to show its own `Took X.Xs`; the model now sees `[duration: ...]`
-on slow runs too.
+Scope: Pi tools that emit `tool_result` events, including built-ins and extension tools. Direct `!` / `!!` shell commands and RPC `bash` command messages are not tool results and are not annotated.
+
+## Install
+
+```bash
+pi install .                         # local, global settings
+pi install -l --approve .            # local, project settings
+pi install npm:pi-tool-duration      # after npm publish
+```
+
+## Try without installing
+
+From this repo:
+
+```bash
+pi -e .
+# or
+pi -e ./extensions/tool-duration/index.ts
+```
 
 ## Configure
 
-Edit `THRESHOLD_MS` in `extensions/tool-duration/index.ts`. Set it to `0` to
-annotate every tool on every run.
+Default threshold: `1000` ms.
+
+```bash
+PI_TOOL_DURATION_THRESHOLD_MS=0 pi -e .        # annotate every tool result
+pi -e . --tool-duration-threshold-ms 500       # annotate tools taking >= 500ms
+```
+
+Invalid threshold values fall back to the default.
+
+## Verify
+
+In a session running the extension, ask Pi to use bash:
+
+```text
+Use bash to run: sleep 5; echo hi
+```
+
+The model sees:
+
+```text
+hi
+[duration: 5.0s]
+```
+
+A fast command below the threshold stays unchanged.
 
 ## License
 
