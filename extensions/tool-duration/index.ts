@@ -30,6 +30,19 @@ function alreadyAnnotated(content: Array<{ type: string; text?: string }>): bool
   return last?.type === "text" && typeof last.text === "string" && DURATION_RE.test(last.text);
 }
 
+function nonZeroExitCode(event: { content: Array<{ type: string; text?: string }>; details?: unknown }): boolean {
+  const details = event.details as Record<string, unknown> | null;
+  const code = details && Number(details.exitCode ?? details.code ?? details.status);
+  if (code !== null && Number.isFinite(code)) return code !== 0;
+
+  return event.content.some(
+    (item) =>
+      item.type === "text" &&
+      typeof item.text === "string" &&
+      /(?:exited with code|exit code)\s+(-?[1-9]\d*)\b/i.test(item.text),
+  );
+}
+
 export default function (pi: ExtensionAPI) {
   const starts = new Map<string, number>();
 
@@ -48,7 +61,8 @@ export default function (pi: ExtensionAPI) {
     if (startedAt === undefined) return;
 
     const ms = performance.now() - startedAt;
-    if (ms < thresholdMs(pi) || alreadyAnnotated(event.content)) return;
+    if (!nonZeroExitCode(event) && ms < thresholdMs(pi)) return;
+    if (alreadyAnnotated(event.content)) return;
 
     return {
       content: [

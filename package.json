@@ -1,6 +1,6 @@
 {
   "name": "pi-tool-duration",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Append model-visible durations to slow Pi tool results",
   "type": "module",
   "author": "Mitch Fultz (https://github.com/fitchmultz)",
@@ -40,7 +40,7 @@
     ]
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.80.2",
+    "@earendil-works/pi-coding-agent": "^0.80.3",
     "typescript": "^5.9.3"
   },
   "peerDependencies": {

@@ -13,7 +13,7 @@ Pi already shows tool timing in the TUI (`Took Xs`), but that timing is UI-only.
 
 ## How it works
 
-The extension matches Pi `tool_call` and `tool_result` events by `toolCallId`. When elapsed time is at or above the configured threshold, it appends one text block:
+The extension matches Pi `tool_call` and `tool_result` events by `toolCallId`. When elapsed time is at or above the configured threshold, or a result reports a non-zero exit code, it appends one text block:
 
 ```text
 [duration: 5.0s]
@@ -65,7 +65,7 @@ hi
 [duration: 5.0s]
 ```
 
-A fast command below the threshold stays unchanged.
+A fast successful command below the threshold stays unchanged. A non-zero exit code is always annotated, even below the threshold.
 
 ## License
 
