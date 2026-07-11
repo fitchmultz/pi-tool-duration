@@ -40,7 +40,7 @@
     ]
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.80.3",
+    "@earendil-works/pi-coding-agent": "^0.80.6",
     "typescript": "^5.9.3"
   },
   "peerDependencies": {

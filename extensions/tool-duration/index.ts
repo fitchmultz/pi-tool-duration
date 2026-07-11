@@ -51,7 +51,7 @@ export default function (pi: ExtensionAPI) {
     type: "string",
   });
 
-  pi.on("tool_call", async (event) => {
+  pi.on("tool_execution_start", async (event) => {
     starts.set(event.toolCallId, performance.now());
   });
 
@@ -76,4 +76,5 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", clearStarts);
   pi.on("session_shutdown", clearStarts);
   pi.on("agent_end", clearStarts);
+  pi.on("agent_settled", clearStarts);
 }

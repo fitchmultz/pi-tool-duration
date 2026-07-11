@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Measure from Pi's `tool_execution_start` event so timing matches the full current execution lifecycle, including preflight hooks.
+- Clear abandoned timing state when the agent fully settles.
+
 ## [0.1.1] - 2026-07-03
 
 ### Changed
