@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.1.2] - 2026-07-11
+
 ### Changed
 
 - Measure from Pi's `tool_execution_start` event so timing matches the full current execution lifecycle, including preflight hooks.
