@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- Refreshed the local Pi development lock and validation baseline to Pi 0.80.7.
+
 ## [0.1.2] - 2026-07-11
 
 ### Changed
