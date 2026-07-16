@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## [0.1.4] - 2026-07-16
+
+- Refreshed the local Pi development lock and validation baseline to Pi 0.80.9; the unified model runtime/provider changes do not affect tool timing.
 
 ## [0.1.3] - 2026-07-14
 
