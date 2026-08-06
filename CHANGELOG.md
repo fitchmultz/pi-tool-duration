@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0] - 2026-08-06
+
+### Changed
+
+- Requires Pi 0.84.0 or later and refreshes the development lock against the released Pi 0.84.0 packages.
+- Verified the tool timing hooks and lifecycle cleanup against Pi 0.84.0's extension events, emitted types, and runtime implementation.
+
 ## [0.1.4] - 2026-07-16
 
 - Refreshed the local Pi development lock and validation baseline to Pi 0.80.9; the unified model runtime/provider changes do not affect tool timing.
