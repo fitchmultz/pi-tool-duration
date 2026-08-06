@@ -23,6 +23,8 @@ Scope: Pi tools that emit `tool_result` events, including built-ins and extensio
 
 ## Install
 
+Requires Pi 0.84.0 or later.
+
 ```bash
 pi install .                         # local, global settings
 pi install -l --approve .            # local, project settings
