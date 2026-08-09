@@ -35,7 +35,7 @@ export default function (pi: ExtensionAPI) {
     parameters: Type.Object({ action: Type.String() }),
     async execute(_toolCallId, { action }) {
       if (action === "slow") {
-        await new Promise((resolve) => setTimeout(resolve, 250));
+        await new Promise((resolve) => setTimeout(resolve, 650));
         return { content: [{ type: "text" as const, text: "slow-ok" }], details: { status: 201 } };
       }
       if (action === "status") {
@@ -48,6 +48,7 @@ export default function (pi: ExtensionAPI) {
         await new Promise((resolve) => setTimeout(resolve, 75));
         return { content: [{ type: "text" as const, text: "[duration: 9.9s]" }], details: undefined };
       }
+      // Exercise Pi's normalization of JavaScript tools that omit content.
       if (action === "no_content") return {} as never;
       if (action === "error") throw new Error("fixture failed");
       return { content: [{ type: "text" as const, text: "fast-ok" }], details: undefined };
