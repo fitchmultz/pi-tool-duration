@@ -29,7 +29,8 @@ export default function (pi: ExtensionAPI) {
   const durations = new Map<string, string>();
 
   pi.registerFlag("tool-duration-threshold-ms", {
-    description: "Minimum tool duration in milliseconds before appending [duration: Xs] to the model-visible result",
+    // Pi's help formatter adds no separator once this long flag exceeds its 30-column width.
+    description: " Minimum elapsed milliseconds before appending a model-visible duration",
     type: "string",
   });
 

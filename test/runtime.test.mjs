@@ -153,6 +153,22 @@ function textBlocks(message) {
   return message.content.filter((item) => item.type === "text").map((item) => item.text);
 }
 
+test("keeps the long threshold flag readable in help output", async () => {
+  const child = spawn(pi, ["--no-extensions", "--extension", extension, "--help"], {
+    cwd: resolve("."),
+    env: { ...process.env, PI_OFFLINE: "1" },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let stdout = "";
+  let stderr = "";
+  child.stdout.setEncoding("utf8").on("data", (data) => (stdout += data));
+  child.stderr.setEncoding("utf8").on("data", (data) => (stderr += data));
+  const [code] = await once(child, "exit");
+
+  assert.equal(code, 0, stderr);
+  assert.match(stdout, /--tool-duration-threshold-ms <value>\s+Minimum/);
+});
+
 test("applies the threshold independently to parallel tools", async () => {
   const { events } = await runPi({
     calls: [
