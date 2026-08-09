@@ -166,6 +166,7 @@ test("applies the threshold independently to parallel tools", async () => {
   assert.deepEqual(textBlocks(fast), ["fast-ok"]);
   assert.equal(textBlocks(slow)[0], "slow-ok");
   assert.match(textBlocks(slow)[1], /^\[duration: 0\.[23]s\]$/);
+  assert.deepEqual(slow.details, { status: 201 });
 });
 
 test("ignores an invalid CLI threshold and uses the environment", async () => {
@@ -185,6 +186,42 @@ test("lets the CLI threshold override the environment", async () => {
 
   const annotated = await runPi({ calls, threshold: "60000", flag: "0" });
   assert.match(textBlocks(toolMessages(annotated.events)[0]).at(-1), /^\[duration: 0\.\ds\]$/);
+});
+
+test("measures slow tool output that looks like a duration marker", async () => {
+  const { events } = await runPi({
+    calls: [{ name: "duration_fixture", arguments: { action: "marker" } }],
+    threshold: "50",
+  });
+
+  const [message] = toolMessages(events);
+  assert.equal(textBlocks(message)[0], "[duration: 9.9s]");
+  assert.match(textBlocks(message)[1], /^\[duration: 0\.\ds\]$/);
+});
+
+test("keeps durations model-visible without duplicating tool execution output", async () => {
+  const { events } = await runPi({
+    calls: [{ name: "duration_fixture", arguments: { action: "fast" } }],
+    threshold: "0",
+  });
+
+  const executionEnd = events.find((event) => event.type === "tool_execution_end");
+  assert.deepEqual(textBlocks(executionEnd.result), ["fast-ok"]);
+
+  const [message] = toolMessages(events);
+  assert.equal(textBlocks(message)[0], "fast-ok");
+  assert.match(textBlocks(message)[1], /^\[duration: 0\.\ds\]$/);
+});
+
+test("annotates failures blocked during tool preflight", async () => {
+  const { events } = await runPi({
+    calls: [{ name: "duration_fixture", arguments: { action: "blocked" } }],
+  });
+
+  const [message] = toolMessages(events);
+  assert.equal(message.isError, true);
+  assert.match(textBlocks(message)[0], /fixture blocked/);
+  assert.match(textBlocks(message).at(-1), /^\[duration: 0\.\ds\]$/);
 });
 
 test("normalizes missing tool content before appending a duration", async () => {

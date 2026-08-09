@@ -22,6 +22,12 @@ export default function (pi: ExtensionAPI) {
     ],
   });
 
+  pi.on("tool_call", (event) => {
+    if (event.toolName === "duration_fixture" && event.input.action === "blocked") {
+      return { block: true, reason: "fixture blocked" };
+    }
+  });
+
   pi.registerTool({
     name: "duration_fixture",
     label: "Duration Fixture",
@@ -30,13 +36,17 @@ export default function (pi: ExtensionAPI) {
     async execute(_toolCallId, { action }) {
       if (action === "slow") {
         await new Promise((resolve) => setTimeout(resolve, 250));
-        return { content: [{ type: "text" as const, text: "slow-ok" }], details: undefined };
+        return { content: [{ type: "text" as const, text: "slow-ok" }], details: { status: 201 } };
       }
       if (action === "status") {
         return { content: [{ type: "text" as const, text: "status-ok" }], details: { status: 200 } };
       }
       if (action === "exit_text") {
         return { content: [{ type: "text" as const, text: "job exited with code 9" }], details: undefined };
+      }
+      if (action === "marker") {
+        await new Promise((resolve) => setTimeout(resolve, 75));
+        return { content: [{ type: "text" as const, text: "[duration: 9.9s]" }], details: undefined };
       }
       if (action === "no_content") return {} as never;
       if (action === "error") throw new Error("fixture failed");
