@@ -13,13 +13,15 @@ Pi already shows tool timing in the TUI (`Took Xs`), but that timing is UI-only.
 
 ## How it works
 
-The extension matches Pi `tool_execution_start` and `tool_result` events by `toolCallId`. When elapsed time is at or above the configured threshold, or a result reports a non-zero exit code, it appends one text block:
+The extension measures from Pi's `tool_execution_start` through `tool_execution_end`. When elapsed time is at or above the configured threshold, or Pi marks the result as failed, it appends one text block to the finalized model-visible tool message:
 
 ```text
 [duration: 5.0s]
 ```
 
-Scope: Pi tools that emit `tool_result` events, including built-ins and extension tools. Direct `!` / `!!` shell commands and RPC `bash` command messages are not tool results and are not annotated.
+This leaves Pi's TUI output unchanged, so built-in timing such as `Took 5.0s` is not duplicated. Scope: Pi tools that emit tool execution events, including built-ins and extension tools. Direct `!` / `!!` shell commands and RPC `bash` command messages are not tool results and are not annotated.
+
+Pi starts these timers during sequential tool-call preflight. In a parallel batch, a call's elapsed time can therefore include time spent preparing later siblings. This mirrors Pi's TUI timing.
 
 ## Install
 
@@ -36,21 +38,23 @@ pi install npm:pi-tool-duration      # after npm publish
 From this repo:
 
 ```bash
-pi -e .
+pi --no-extensions -e .
 # or
-pi -e ./extensions/tool-duration/index.ts
+pi --no-extensions -e ./extensions/tool-duration/index.ts
 ```
+
+`--no-extensions` prevents a duplicate flag conflict when another copy is already installed.
 
 ## Configure
 
 Default threshold: `1000` ms.
 
 ```bash
-PI_TOOL_DURATION_THRESHOLD_MS=0 pi -e .        # annotate every tool result
-pi -e . --tool-duration-threshold-ms 500       # annotate tools taking >= 500ms
+PI_TOOL_DURATION_THRESHOLD_MS=0 pi --no-extensions -e .   # annotate every tool result
+pi --no-extensions -e . --tool-duration-threshold-ms 500  # annotate tools taking >= 500ms
 ```
 
-Invalid threshold values fall back to the default.
+Invalid values are ignored. An invalid CLI value falls through to the environment value; an invalid environment value falls back to the default.
 
 ## Verify
 
@@ -67,7 +71,7 @@ hi
 [duration: 5.0s]
 ```
 
-A fast successful command below the threshold stays unchanged. A non-zero exit code is always annotated, even below the threshold.
+A fast successful tool below the threshold stays unchanged. A failed tool result delivered to the model is always annotated, even below the threshold.
 
 ## License
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.1] - 2026-08-09
+
+### Fixed
+
+- Use Pi's error status instead of guessing from arbitrary result text or metadata, eliminating false duration markers on successful tools.
+- Append duration markers to finalized model-visible messages so the TUI keeps its single native timer, missing-content tools stay safe, blocked preflight failures are covered, and marker-like tool output is still measured.
+- Keep the long threshold flag readable in `pi --help` and declare the documented Pi 0.84.0 host floor in package metadata.
+- Keep the integration-test dependency lockfile installable from the public npm registry.
+
+### Changed
+
+- Added real Pi CLI integration coverage over a local HTTP model transport for timing, flags, failures, parallel calls, lifecycle cleanup, and result preservation.
+
 ## [0.2.0] - 2026-08-06
 
 ### Changed
