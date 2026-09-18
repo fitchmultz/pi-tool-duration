@@ -19,7 +19,7 @@ The extension measures from Pi's `tool_execution_start` through `tool_execution_
 [duration: 5.0s]
 ```
 
-Compaction summaries also receive annotated copies of tool results. Recorded tool output stays unchanged, including after reload, resume, and branch navigation. Timings remain available to the model across those transitions without duplicating Pi's native TUI timing such as `Took 5.0s`.
+Compaction input copies put timing before the tool output so it survives Pi's truncation of long results. Recorded tool output stays unchanged, including after reload, resume, and branch navigation. Timings remain available to the model across those transitions without duplicating Pi's native TUI timing such as `Took 5.0s`.
 
 Markers already saved as tool text by versions through 0.2.1 remain unchanged. They cannot be safely distinguished from genuine tool output with the same text.
 

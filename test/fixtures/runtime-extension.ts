@@ -57,6 +57,9 @@ export default function (pi: ExtensionAPI) {
         await new Promise((resolve) => setTimeout(resolve, 650));
         return { content: [{ type: "text" as const, text: "slow-ok" }], details: { status: 201 } };
       }
+      if (action === "long") {
+        return { content: [{ type: "text" as const, text: "long-output ".repeat(400) }], details: { status: 200 } };
+      }
       if (action === "status") {
         return { content: [{ type: "text" as const, text: "status-ok" }], details: { status: 200 } };
       }
