@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.2] - 2026-09-18
+
+### Fixed
+
+- Keep duration markers out of terminal tool output after reload, resume, and branch navigation by storing timing in hidden session entries and annotating only model-request copies.
+- Preserve model-visible timings across restoration, compaction summaries, and retained compaction history without changing tool content or details.
+
+### Changed
+
+- Verify recorded output, reload, restored timing, branch isolation, and repeated model requests in regression tests.
+- Run clean-install checks on Node 22.19 and Node 24 in GitHub Actions.
+
 ## [0.2.1] - 2026-08-09
 
 ### Fixed

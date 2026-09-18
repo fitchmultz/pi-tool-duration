@@ -22,6 +22,25 @@ export default function (pi: ExtensionAPI) {
     ],
   });
 
+  pi.registerCommand("duration-test-reload", {
+    handler: async (_args, ctx) => {
+      await ctx.reload();
+    },
+  });
+
+  pi.registerCommand("duration-test-compact", {
+    handler: async (_args, ctx) => {
+      await new Promise<void>((resolve, reject) => {
+        ctx.compact({ onComplete: () => resolve(), onError: reject });
+      });
+      pi.sendMessage({
+        customType: "duration-test-recorded",
+        content: JSON.stringify(ctx.sessionManager.getEntries()),
+        display: false,
+      });
+    },
+  });
+
   pi.on("tool_call", (event) => {
     if (event.toolName === "duration_fixture" && event.input.action === "blocked") {
       return { block: true, reason: "fixture blocked" };

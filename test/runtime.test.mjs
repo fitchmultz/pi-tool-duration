@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -127,7 +127,7 @@ function sendScriptedResponse(response, calls) {
   response.end("data: [DONE]\n\n");
 }
 
-async function runPi({ calls, threshold = "60000", flag }) {
+async function runPi({ calls, threshold = "60000", flag, reload = false, summarize }) {
   const requests = [];
   const server = createServer(async (request, response) => {
     const chunks = [];
@@ -146,6 +146,13 @@ async function runPi({ calls, threshold = "60000", flag }) {
     PI_TOOL_DURATION_THRESHOLD_MS: threshold,
     PI_TOOL_DURATION_TEST_PORT: String(port),
   });
+
+  if (summarize) {
+    await mkdir(join(isolation.root, "agent"), { recursive: true });
+    await writeFile(join(isolation.root, "agent/settings.json"), JSON.stringify({
+      compaction: { enabled: false, reserveTokens: 1024, keepRecentTokens: summarize === "history" ? 128 : 1 },
+    }));
+  }
 
   const args = [
     "--no-extensions",
@@ -172,12 +179,16 @@ async function runPi({ calls, threshold = "60000", flag }) {
   ];
   if (flag !== undefined) args.push("--tool-duration-threshold-ms", flag);
   args.push("-p", "Run the scripted test scenario.");
+  if (reload) args.push("/duration-test-reload", "Continue after reloading.");
+  // A full second turn puts the cut at its user message instead of splitting the first turn.
+  if (summarize === "history") args.push(`New turn: ${"context ".repeat(100)}`);
+  if (summarize) args.push("/duration-test-compact");
 
   try {
     const { code, signal, stdout, stderr } = await runProcess(args, isolation.env);
     assert.equal(signal, null, stderr);
     assert.equal(code, 0, stderr);
-    assert.equal(requests.length, 2, stderr);
+    assert.equal(requests.length, 2 + Number(reload) + Number(Boolean(summarize)) + Number(summarize === "history"), stderr);
     for (const request of requests) {
       assert.equal(request.method, "POST");
       assert.equal(request.url, "/v1/chat/completions");
@@ -212,8 +223,12 @@ function textBlocks(message) {
   return message.content.filter((item) => item.type === "text").map((item) => item.text);
 }
 
+function modelToolOutputs(request) {
+  return request.body.messages.filter((message) => message.role === "tool").map((message) => message.content);
+}
+
 function durationSeconds(text) {
-  const match = /^\[duration: (\d+\.\d)s\]$/.exec(text);
+  const match = /(?:^|\n)\[duration: (\d+\.\d)s\]$/.exec(text);
   assert.ok(match, `invalid duration marker: ${text}`);
   return Number(match[1]);
 }
@@ -233,7 +248,7 @@ test("keeps the long threshold flag readable in help output", async () => {
 });
 
 test("applies the threshold independently to parallel tools", async () => {
-  const { events } = await runPi({
+  const { events, requests } = await runPi({
     calls: [
       { name: "duration_fixture", arguments: { action: "fast" } },
       { name: "duration_fixture", arguments: { action: "slow" } },
@@ -243,40 +258,46 @@ test("applies the threshold independently to parallel tools", async () => {
 
   const [fast, slow] = toolMessages(events);
   assert.deepEqual(textBlocks(fast), ["fast-ok"]);
-  assert.equal(textBlocks(slow)[0], "slow-ok");
-  assert.ok(durationSeconds(textBlocks(slow)[1]) >= 0.5);
+  assert.deepEqual(textBlocks(slow), ["slow-ok"]);
+  const [fastOutput, slowOutput] = modelToolOutputs(requests[1]);
+  assert.equal(fastOutput, "fast-ok");
+  assert.ok(durationSeconds(slowOutput) >= 0.5);
   assert.deepEqual(slow.details, { status: 201 });
 });
 
 test("ignores an invalid CLI threshold and uses the environment", async () => {
-  const { events } = await runPi({
+  const { requests } = await runPi({
     calls: [{ name: "duration_fixture", arguments: { action: "fast" } }],
     threshold: "0",
     flag: "not-a-number",
   });
 
-  durationSeconds(textBlocks(toolMessages(events)[0]).at(-1));
+  durationSeconds(modelToolOutputs(requests[1])[0]);
 });
 
 test("lets the CLI threshold override the environment", async () => {
   const calls = [{ name: "duration_fixture", arguments: { action: "fast" } }];
   const suppressed = await runPi({ calls, threshold: "0", flag: "60000" });
   assert.deepEqual(textBlocks(toolMessages(suppressed.events)[0]), ["fast-ok"]);
+  assert.deepEqual(modelToolOutputs(suppressed.requests[1]), ["fast-ok"]);
 
   const annotated = await runPi({ calls, threshold: "60000", flag: "0" });
-  durationSeconds(textBlocks(toolMessages(annotated.events)[0]).at(-1));
+  durationSeconds(modelToolOutputs(annotated.requests[1])[0]);
 });
 
 test("measures slow tool output that looks like a duration marker", async () => {
-  const { events } = await runPi({
+  const { events, requests } = await runPi({
     calls: [{ name: "duration_fixture", arguments: { action: "marker" } }],
     threshold: "50",
   });
 
   const [message] = toolMessages(events);
   const texts = textBlocks(message);
-  assert.equal(texts[0], "[duration: 9.9s]");
-  durationSeconds(texts[1]);
+  assert.deepEqual(texts, ["[duration: 9.9s]"]);
+  const [output] = modelToolOutputs(requests[1]);
+  assert.ok(output.startsWith("[duration: 9.9s]\n"));
+  assert.equal(output.match(/\[duration:/g).length, 2);
+  durationSeconds(output);
 });
 
 test("keeps durations model-visible without duplicating tool execution output", async () => {
@@ -289,38 +310,73 @@ test("keeps durations model-visible without duplicating tool execution output", 
   assert.deepEqual(textBlocks(executionEnd.result), ["fast-ok"]);
 
   const [message] = toolMessages(events);
-  assert.equal(textBlocks(message)[0], "fast-ok");
-  durationSeconds(textBlocks(message)[1]);
+  assert.deepEqual(textBlocks(message), ["fast-ok"]);
 
   const outboundTool = requests[1].body.messages.find((item) => item.role === "tool");
   assert.match(JSON.stringify(outboundTool), /\[duration: \d+\.\ds\]/);
 });
 
+test("retains model-only timing after reloading extensions without duplicating it", async () => {
+  const { events, requests } = await runPi({
+    calls: [{ name: "duration_fixture", arguments: { action: "fast" } }],
+    threshold: "0",
+    reload: true,
+  });
+
+  assert.deepEqual(textBlocks(toolMessages(events)[0]), ["fast-ok"]);
+  const [before] = modelToolOutputs(requests[1]);
+  const [after] = modelToolOutputs(requests[2]);
+  durationSeconds(before);
+  assert.equal(after, before);
+  assert.equal(after.match(/\[duration:/g).length, 1);
+});
+
+for (const summarize of ["prefix", "history"]) {
+  test(`keeps timing in ${summarize} summaries without changing recorded tool output`, async () => {
+    const { events, requests, stderr } = await runPi({
+      calls: [{ name: "duration_fixture", arguments: { action: "fast" } }],
+      threshold: "0",
+      summarize,
+    });
+    assert.doesNotMatch(stderr, /Extension error/);
+    const [output] = modelToolOutputs(requests[1]);
+    const [duration] = output.match(/\[duration: \d+\.\ds\]/g);
+    const summaryInput = JSON.stringify(requests.at(-1).body.messages);
+    assert.ok(summaryInput.includes("fast-ok"), summaryInput);
+    assert.ok(summaryInput.includes(duration), "summarizer must receive the original timing");
+    const snapshot = events.find((event) => event.type === "message_end" &&
+      event.message?.customType === "duration-test-recorded").message;
+    const recorded = JSON.parse(snapshot.content).find((entry) =>
+      entry.type === "message" && entry.message.role === "toolResult").message;
+    assert.deepEqual(textBlocks(recorded), ["fast-ok"]);
+  });
+}
+
 test("annotates failures blocked during tool preflight", async () => {
-  const { events } = await runPi({
+  const { events, requests } = await runPi({
     calls: [{ name: "duration_fixture", arguments: { action: "blocked" } }],
   });
 
   const [message] = toolMessages(events);
   assert.equal(message.isError, true);
   assert.match(textBlocks(message)[0], /fixture blocked/);
-  durationSeconds(textBlocks(message).at(-1));
+  durationSeconds(modelToolOutputs(requests[1])[0]);
 });
 
 test("normalizes missing tool content before appending a duration", async () => {
-  const { events, stderr } = await runPi({
+  const { events, requests, stderr } = await runPi({
     calls: [{ name: "duration_fixture", arguments: { action: "no_content" } }],
     threshold: "0",
   });
 
   assert.doesNotMatch(stderr, /Extension error/);
   const [message] = toolMessages(events);
-  assert.equal(textBlocks(message).length, 1);
-  durationSeconds(textBlocks(message)[0]);
+  assert.deepEqual(textBlocks(message), []);
+  durationSeconds(modelToolOutputs(requests[1])[0]);
 });
 
 test("only failed fast results bypass a high threshold", async () => {
-  const { events } = await runPi({
+  const { events, requests } = await runPi({
     calls: [
       { name: "duration_fixture", arguments: { action: "exit_text" } },
       { name: "duration_fixture", arguments: { action: "status" } },
@@ -332,5 +388,8 @@ test("only failed fast results bypass a high threshold", async () => {
   assert.deepEqual(textBlocks(exitText), ["job exited with code 9"]);
   assert.deepEqual(textBlocks(status), ["status-ok"]);
   assert.equal(error.isError, true);
-  durationSeconds(textBlocks(error).at(-1));
+  const [exitOutput, statusOutput, errorOutput] = modelToolOutputs(requests[1]);
+  assert.equal(exitOutput, "job exited with code 9");
+  assert.equal(statusOutput, "status-ok");
+  durationSeconds(errorOutput);
 });
