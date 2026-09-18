@@ -5,7 +5,7 @@
  * how long a call actually took. pi already measures this for the TUI
  * ("Took Xs") but the model does not see that timing.
  */
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ContextEvent, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 const DEFAULT_THRESHOLD_MS = 1000;
 const TIMING_ENTRY = "pi-tool-duration";
@@ -25,6 +25,30 @@ function thresholdMs(pi: ExtensionAPI): number {
     parseThreshold(process.env.PI_TOOL_DURATION_THRESHOLD_MS) ??
     DEFAULT_THRESHOLD_MS
   );
+}
+
+function withDurations(messages: ContextEvent["messages"], ctx: ExtensionContext) {
+  const saved = new Map<string, string>();
+  for (const entry of ctx.sessionManager.getBranch()) {
+    if (entry.type !== "custom" || entry.customType !== TIMING_ENTRY) continue;
+    const timing = entry.data as SavedTiming | undefined;
+    if (
+      typeof timing?.toolCallId !== "string" ||
+      typeof timing.timestamp !== "number" ||
+      typeof timing.duration !== "string"
+    ) continue;
+    saved.set(`${timing.timestamp}:${timing.toolCallId}`, timing.duration);
+  }
+
+  return messages.map((message) => {
+    if (message.role !== "toolResult") return message;
+    const duration = saved.get(`${message.timestamp}:${message.toolCallId}`);
+    if (!duration) return message;
+    return {
+      ...message,
+      content: [...message.content, { type: "text" as const, text: duration }],
+    };
+  });
 }
 
 export default function (pi: ExtensionAPI) {
@@ -65,30 +89,12 @@ export default function (pi: ExtensionAPI) {
     });
   });
 
-  pi.on("context", (event, ctx) => {
-    const saved = new Map<string, string>();
-    for (const entry of ctx.sessionManager.getBranch()) {
-      if (entry.type !== "custom" || entry.customType !== TIMING_ENTRY) continue;
-      const timing = entry.data as SavedTiming | undefined;
-      if (
-        typeof timing?.toolCallId !== "string" ||
-        typeof timing.timestamp !== "number" ||
-        typeof timing.duration !== "string"
-      ) continue;
-      saved.set(`${timing.timestamp}:${timing.toolCallId}`, timing.duration);
-    }
+  pi.on("context", (event, ctx) => ({ messages: withDurations(event.messages, ctx) }));
 
-    return {
-      messages: event.messages.map((message) => {
-        if (message.role !== "toolResult") return message;
-        const duration = saved.get(`${message.timestamp}:${message.toolCallId}`);
-        if (!duration) return message;
-        return {
-          ...message,
-          content: [...message.content, { type: "text" as const, text: duration }],
-        };
-      }),
-    };
+  pi.on("session_before_compact", ({ preparation }, ctx) => {
+    // Native summarization bypasses context hooks. Replace its inputs, never the saved messages.
+    preparation.messagesToSummarize = withDurations(preparation.messagesToSummarize, ctx);
+    preparation.turnPrefixMessages = withDurations(preparation.turnPrefixMessages, ctx);
   });
 
   const clearTimings = () => {

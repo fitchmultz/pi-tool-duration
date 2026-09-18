@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -127,7 +127,7 @@ function sendScriptedResponse(response, calls) {
   response.end("data: [DONE]\n\n");
 }
 
-async function runPi({ calls, threshold = "60000", flag, reload = false }) {
+async function runPi({ calls, threshold = "60000", flag, reload = false, summarize }) {
   const requests = [];
   const server = createServer(async (request, response) => {
     const chunks = [];
@@ -146,6 +146,13 @@ async function runPi({ calls, threshold = "60000", flag, reload = false }) {
     PI_TOOL_DURATION_THRESHOLD_MS: threshold,
     PI_TOOL_DURATION_TEST_PORT: String(port),
   });
+
+  if (summarize) {
+    await mkdir(join(isolation.root, "agent"), { recursive: true });
+    await writeFile(join(isolation.root, "agent/settings.json"), JSON.stringify({
+      compaction: { enabled: false, reserveTokens: 1024, keepRecentTokens: summarize === "history" ? 128 : 1 },
+    }));
+  }
 
   const args = [
     "--no-extensions",
@@ -173,12 +180,15 @@ async function runPi({ calls, threshold = "60000", flag, reload = false }) {
   if (flag !== undefined) args.push("--tool-duration-threshold-ms", flag);
   args.push("-p", "Run the scripted test scenario.");
   if (reload) args.push("/duration-test-reload", "Continue after reloading.");
+  // A full second turn puts the cut at its user message instead of splitting the first turn.
+  if (summarize === "history") args.push(`New turn: ${"context ".repeat(100)}`);
+  if (summarize) args.push("/duration-test-compact");
 
   try {
     const { code, signal, stdout, stderr } = await runProcess(args, isolation.env);
     assert.equal(signal, null, stderr);
     assert.equal(code, 0, stderr);
-    assert.equal(requests.length, reload ? 3 : 2, stderr);
+    assert.equal(requests.length, 2 + Number(reload) + Number(Boolean(summarize)) + Number(summarize === "history"), stderr);
     for (const request of requests) {
       assert.equal(request.method, "POST");
       assert.equal(request.url, "/v1/chat/completions");
@@ -320,6 +330,27 @@ test("retains model-only timing after reloading extensions without duplicating i
   assert.equal(after, before);
   assert.equal(after.match(/\[duration:/g).length, 1);
 });
+
+for (const summarize of ["prefix", "history"]) {
+  test(`keeps timing in ${summarize} summaries without changing recorded tool output`, async () => {
+    const { events, requests, stderr } = await runPi({
+      calls: [{ name: "duration_fixture", arguments: { action: "fast" } }],
+      threshold: "0",
+      summarize,
+    });
+    assert.doesNotMatch(stderr, /Extension error/);
+    const [output] = modelToolOutputs(requests[1]);
+    const [duration] = output.match(/\[duration: \d+\.\ds\]/g);
+    const summaryInput = JSON.stringify(requests.at(-1).body.messages);
+    assert.ok(summaryInput.includes("fast-ok"), summaryInput);
+    assert.ok(summaryInput.includes(duration), "summarizer must receive the original timing");
+    const snapshot = events.find((event) => event.type === "message_end" &&
+      event.message?.customType === "duration-test-recorded").message;
+    const recorded = JSON.parse(snapshot.content).find((entry) =>
+      entry.type === "message" && entry.message.role === "toolResult").message;
+    assert.deepEqual(textBlocks(recorded), ["fast-ok"]);
+  });
+}
 
 test("annotates failures blocked during tool preflight", async () => {
   const { events, requests } = await runPi({
