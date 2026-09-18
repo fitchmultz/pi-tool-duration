@@ -27,7 +27,11 @@ function thresholdMs(pi: ExtensionAPI): number {
   );
 }
 
-function withDurations(messages: ContextEvent["messages"], ctx: ExtensionContext) {
+function withDurations(
+  messages: ContextEvent["messages"],
+  ctx: ExtensionContext,
+  position: "append" | "prepend" = "append",
+) {
   const saved = new Map<string, string>();
   for (const entry of ctx.sessionManager.getBranch()) {
     if (entry.type !== "custom" || entry.customType !== TIMING_ENTRY) continue;
@@ -44,9 +48,10 @@ function withDurations(messages: ContextEvent["messages"], ctx: ExtensionContext
     if (message.role !== "toolResult") return message;
     const duration = saved.get(`${message.timestamp}:${message.toolCallId}`);
     if (!duration) return message;
+    const marker = { type: "text" as const, text: duration };
     return {
       ...message,
-      content: [...message.content, { type: "text" as const, text: duration }],
+      content: position === "prepend" ? [marker, ...message.content] : [...message.content, marker],
     };
   });
 }
@@ -92,9 +97,10 @@ export default function (pi: ExtensionAPI) {
   pi.on("context", (event, ctx) => ({ messages: withDurations(event.messages, ctx) }));
 
   pi.on("session_before_compact", ({ preparation }, ctx) => {
-    // Native summarization bypasses context hooks. Replace its inputs, never the saved messages.
-    preparation.messagesToSummarize = withDurations(preparation.messagesToSummarize, ctx);
-    preparation.turnPrefixMessages = withDurations(preparation.turnPrefixMessages, ctx);
+    // Native summarization bypasses context hooks and truncates tool text from the end.
+    // Put timing first in its input copies, never in saved messages or ordinary requests.
+    preparation.messagesToSummarize = withDurations(preparation.messagesToSummarize, ctx, "prepend");
+    preparation.turnPrefixMessages = withDurations(preparation.turnPrefixMessages, ctx, "prepend");
   });
 
   const clearTimings = () => {

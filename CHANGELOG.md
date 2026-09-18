@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.3] - 2026-09-18
+
+### Fixed
+
+- Preserve timing in native compaction input when long tool output is truncated, including split-turn summaries. Ordinary requests still append one duration marker, and recorded tool content and details remain unchanged.
+
 ## [0.2.2] - 2026-09-18
 
 ### Fixed

@@ -332,24 +332,41 @@ test("retains model-only timing after reloading extensions without duplicating i
 });
 
 for (const summarize of ["prefix", "history"]) {
-  test(`keeps timing in ${summarize} summaries without changing recorded tool output`, async () => {
-    const { events, requests, stderr } = await runPi({
-      calls: [{ name: "duration_fixture", arguments: { action: "fast" } }],
-      threshold: "0",
-      summarize,
+  for (const action of ["fast", "long"]) {
+    test(`keeps ${action} output timing in ${summarize} summaries without changing recorded tool output`, async () => {
+      const originalText = action === "long" ? "long-output ".repeat(400) : "fast-ok";
+      const { events, requests, stderr } = await runPi({
+        calls: [{ name: "duration_fixture", arguments: { action } }],
+        threshold: "0",
+        summarize,
+      });
+      assert.doesNotMatch(stderr, /Extension error/);
+      const [message] = toolMessages(events);
+      assert.deepEqual(textBlocks(message), [originalText]);
+      assert.deepEqual(message.details, action === "long" ? { status: 200 } : undefined);
+      const executionEnd = events.find((event) => event.type === "tool_execution_end");
+      assert.deepEqual(textBlocks(executionEnd.result), [originalText]);
+      const [output] = modelToolOutputs(requests[1]);
+      durationSeconds(output);
+      const durations = output.match(/\[duration: \d+\.\ds\]/g);
+      assert.equal(durations.length, 1);
+      const [duration] = durations;
+      assert.equal(output, `${originalText}\n${duration}`);
+      const summaryInput = JSON.stringify(requests.at(-1).body.messages);
+      assert.ok(summaryInput.includes(originalText.slice(0, 100)), summaryInput);
+      if (action === "long") {
+        assert.match(summaryInput, /more characters truncated/);
+        assert.ok(!summaryInput.includes(originalText), "native summarization must truncate the long output");
+      }
+      const snapshot = events.find((event) => event.type === "message_end" &&
+        event.message?.customType === "duration-test-recorded").message;
+      const recorded = JSON.parse(snapshot.content).find((entry) =>
+        entry.type === "message" && entry.message.role === "toolResult").message;
+      assert.deepEqual(recorded, message);
+      assert.ok(summaryInput.includes(duration), "summarizer must receive the original timing");
+      assert.equal(summaryInput.match(/\[duration:/g).length, 1);
     });
-    assert.doesNotMatch(stderr, /Extension error/);
-    const [output] = modelToolOutputs(requests[1]);
-    const [duration] = output.match(/\[duration: \d+\.\ds\]/g);
-    const summaryInput = JSON.stringify(requests.at(-1).body.messages);
-    assert.ok(summaryInput.includes("fast-ok"), summaryInput);
-    assert.ok(summaryInput.includes(duration), "summarizer must receive the original timing");
-    const snapshot = events.find((event) => event.type === "message_end" &&
-      event.message?.customType === "duration-test-recorded").message;
-    const recorded = JSON.parse(snapshot.content).find((entry) =>
-      entry.type === "message" && entry.message.role === "toolResult").message;
-    assert.deepEqual(textBlocks(recorded), ["fast-ok"]);
-  });
+  }
 }
 
 test("annotates failures blocked during tool preflight", async () => {
