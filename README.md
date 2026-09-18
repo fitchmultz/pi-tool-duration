@@ -13,13 +13,17 @@ Pi already shows tool timing in the TUI (`Took Xs`), but that timing is UI-only.
 
 ## How it works
 
-The extension measures from Pi's `tool_execution_start` through `tool_execution_end`. When elapsed time is at or above the configured threshold, or Pi marks the result as failed, it appends one text block to the finalized model-visible tool message:
+The extension measures from Pi's `tool_execution_start` through `tool_execution_end`. When elapsed time is at or above the configured threshold, or Pi marks the result as failed, it saves the timing in a hidden session entry. Before each model request, it appends one text block to that request's copy of the tool result:
 
 ```text
 [duration: 5.0s]
 ```
 
-This leaves Pi's TUI output unchanged, so built-in timing such as `Took 5.0s` is not duplicated. Scope: Pi tools that emit tool execution events, including built-ins and extension tools. Direct `!` / `!!` shell commands and RPC `bash` command messages are not tool results and are not annotated.
+Recorded tool output stays unchanged, including after reload, resume, and branch navigation. Timings remain available to the model across those transitions without duplicating Pi's native TUI timing such as `Took 5.0s`.
+
+Markers already saved as tool text by versions through 0.2.1 remain unchanged. They cannot be safely distinguished from genuine tool output with the same text.
+
+Scope: Pi tools that emit tool execution events, including built-ins and extension tools. Direct `!` / `!!` shell commands and RPC `bash` command messages are not tool results and are not annotated.
 
 Pi starts these timers during sequential tool-call preflight. In a parallel batch, a call's elapsed time can therefore include time spent preparing later siblings. This mirrors Pi's TUI timing.
 
@@ -30,7 +34,7 @@ Requires Pi 0.84.0 or later.
 ```bash
 pi install .                         # local, global settings
 pi install -l --approve .            # local, project settings
-pi install npm:pi-tool-duration      # after npm publish
+pi install npm:pi-tool-duration      # published package
 ```
 
 ## Try without installing

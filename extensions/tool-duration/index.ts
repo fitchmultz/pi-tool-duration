@@ -8,6 +8,9 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const DEFAULT_THRESHOLD_MS = 1000;
+const TIMING_ENTRY = "pi-tool-duration";
+
+type SavedTiming = { toolCallId: string; timestamp: number; duration: string };
 
 function parseThreshold(value: unknown): number | undefined {
   if (typeof value !== "string" && typeof value !== "number") return undefined;
@@ -54,11 +57,37 @@ export default function (pi: ExtensionAPI) {
     durations.delete(event.message.toolCallId);
     if (!duration) return;
 
+    // Keep timing out of recorded tool content: Pi also uses it to rebuild the TUI.
+    pi.appendEntry<SavedTiming>(TIMING_ENTRY, {
+      toolCallId: event.message.toolCallId,
+      timestamp: event.message.timestamp,
+      duration,
+    });
+  });
+
+  pi.on("context", (event, ctx) => {
+    const saved = new Map<string, string>();
+    for (const entry of ctx.sessionManager.getBranch()) {
+      if (entry.type !== "custom" || entry.customType !== TIMING_ENTRY) continue;
+      const timing = entry.data as SavedTiming | undefined;
+      if (
+        typeof timing?.toolCallId !== "string" ||
+        typeof timing.timestamp !== "number" ||
+        typeof timing.duration !== "string"
+      ) continue;
+      saved.set(`${timing.timestamp}:${timing.toolCallId}`, timing.duration);
+    }
+
     return {
-      message: {
-        ...event.message,
-        content: [...event.message.content, { type: "text" as const, text: duration }],
-      },
+      messages: event.messages.map((message) => {
+        if (message.role !== "toolResult") return message;
+        const duration = saved.get(`${message.timestamp}:${message.toolCallId}`);
+        if (!duration) return message;
+        return {
+          ...message,
+          content: [...message.content, { type: "text" as const, text: duration }],
+        };
+      }),
     };
   });
 

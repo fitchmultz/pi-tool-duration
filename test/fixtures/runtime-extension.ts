@@ -22,6 +22,12 @@ export default function (pi: ExtensionAPI) {
     ],
   });
 
+  pi.registerCommand("duration-test-reload", {
+    handler: async (_args, ctx) => {
+      await ctx.reload();
+    },
+  });
+
   pi.on("tool_call", (event) => {
     if (event.toolName === "duration_fixture" && event.input.action === "blocked") {
       return { block: true, reason: "fixture blocked" };
