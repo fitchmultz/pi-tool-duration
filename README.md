@@ -77,6 +77,12 @@ hi
 
 A fast successful tool below the threshold stays unchanged. A failed tool result delivered to the model is always annotated, even below the threshold.
 
+## Development
+
+Run `npm ci` and `npm run check`. Set `PI_HOST_INDEX` to a checkpoint-capable
+host's absolute `dist/index.js` path to include the native checkpoint/reload/restore
+regression. It uses an isolated HOME and makes no model calls.
+
 ## License
 
 MIT
