@@ -50,11 +50,11 @@ function modelContext(handlers, sessionManager) {
 
 const texts = (message) => message.content.map((item) => item.text);
 
-test("clears pending timings on every lifecycle boundary", async () => {
+test("clears pending timings on startup and agent completion", async () => {
   const sessionManager = SessionManager.inMemory();
   const handlers = loadExtension(sessionManager);
 
-  for (const boundary of ["session_start", "agent_end", "agent_settled", "session_shutdown"]) {
+  for (const boundary of ["session_start", "agent_end", "agent_settled"]) {
     const pendingDuration = `${boundary}-duration`;
     await handlers.get("tool_execution_start")({ toolCallId: pendingDuration });
     await handlers.get("tool_execution_end")({ toolCallId: pendingDuration, isError: false });
@@ -68,6 +68,23 @@ test("clears pending timings on every lifecycle boundary", async () => {
     await handlers.get("message_end")(toolMessage(pendingStart));
     assert.deepEqual(sessionManager.getEntries(), []);
   }
+});
+
+test("fresh instances cannot inherit unfinished timing maps", async () => {
+  const sessionManager = SessionManager.inMemory();
+  const old = loadExtension(sessionManager);
+  await old.get("tool_execution_start")({ toolCallId: "start-only" });
+  await old.get("tool_execution_start")({ toolCallId: "duration-only" });
+  await old.get("tool_execution_end")({ toolCallId: "duration-only", isError: true });
+
+  const fresh = loadExtension(sessionManager);
+  await fresh.get("session_start")();
+  await fresh.get("tool_execution_end")({ toolCallId: "start-only", isError: true });
+  await fresh.get("message_end")(toolMessage("start-only"));
+  await fresh.get("message_end")(toolMessage("duration-only"));
+  assert.deepEqual(sessionManager.getEntries(), []);
+  await recordTool(fresh, sessionManager, toolMessage("fresh").message);
+  assert.equal(modelContext(fresh, sessionManager)[0].content.length, 1);
 });
 
 test("restores timing from serialized entries without changing recorded content or details", async () => {

@@ -108,7 +108,6 @@ export default function (pi: ExtensionAPI) {
     durations.clear();
   };
   pi.on("session_start", clearTimings);
-  pi.on("session_shutdown", clearTimings);
   pi.on("agent_end", clearTimings);
   pi.on("agent_settled", clearTimings);
 }
