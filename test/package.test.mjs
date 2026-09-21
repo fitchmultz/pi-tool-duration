@@ -9,7 +9,9 @@ test("keeps development tarballs on the public npm registry", async () => {
   }
 });
 
-test("declares the supported Pi host floor", async () => {
+test("uses the host-provided Pi peer without bundling a private runtime", async () => {
   const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
-  assert.equal(packageJson.peerDependencies["@earendil-works/pi-coding-agent"], ">=0.84.0");
+  assert.equal(packageJson.peerDependencies["@earendil-works/pi-coding-agent"], "*");
+  assert.equal(packageJson.peerDependenciesMeta["@earendil-works/pi-coding-agent"].optional, true);
+  assert.equal(packageJson.dependencies?.["@earendil-works/pi-coding-agent"], undefined);
 });

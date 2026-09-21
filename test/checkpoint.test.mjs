@@ -6,10 +6,12 @@ import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-// Opt in with a checkpoint-capable native host; never substitute a mock guard.
+// Optional on official Pi, mandatory in the maintained-fork qualification lane.
+const required = process.env.PI_COMPAT_HOST === "fork" || process.env.PI_REQUIRE_CHECKPOINT === "1";
 test("native settled checkpoints preserve history and tool selection across reload/restore", {
-  skip: !process.env.PI_HOST_INDEX && "Set PI_HOST_INDEX to a checkpoint-capable host's dist/index.js",
-}, () => {
+  skip: !required && !process.env.PI_HOST_INDEX && "Set PI_HOST_INDEX to a checkpoint-capable host's dist/index.js",
+}, (t) => {
+  assert.ok(process.env.PI_HOST_INDEX, "Checkpoint qualification requires PI_HOST_INDEX");
   const home = mkdtempSync(join(tmpdir(), "pi-tool-duration-checkpoint-"));
   try {
     const result = spawnSync(process.execPath, ["--input-type=module", "--eval", `
@@ -18,6 +20,7 @@ test("native settled checkpoints preserve history and tool selection across relo
       import { join } from "node:path";
       globalThis.fetch = async () => { throw new Error("No network in checkpoint test"); };
       const pi = await import(pathToFileURL(process.env.PI_HOST_INDEX));
+      if (typeof pi.AgentSession.prototype.acquireCheckpoint !== "function") process.exit(77);
       const cwd = process.env.HOME;
       const agentDir = join(cwd, "agent");
       const create = async checkpoint => {
@@ -71,6 +74,10 @@ test("native settled checkpoints preserve history and tool selection across relo
         TEST_EXTENSION: fileURLToPath(new URL("../extensions/tool-duration/index.ts", import.meta.url)),
       },
     });
+    if (result.status === 77) {
+      assert.ok(!required, "This job requires a checkpoint-capable native host");
+      return t.skip("Selected native host does not support checkpoints");
+    }
     assert.equal(result.status, 0, result.stderr || String(result.error));
   } finally {
     rmSync(home, { recursive: true, force: true });
