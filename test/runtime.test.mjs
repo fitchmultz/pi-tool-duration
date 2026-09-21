@@ -4,13 +4,22 @@ import { once } from "node:events";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { readFileSync, realpathSync } from "node:fs";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-const piCli = fileURLToPath(
-  new URL("./cli.js", import.meta.resolve("@earendil-works/pi-coding-agent")),
-);
+const hostDir = resolve(dirname(fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"))), "..");
+const hostPackage = JSON.parse(readFileSync(join(hostDir, "package.json"), "utf8"));
+const bundledCli = resolve(hostDir, hostPackage.bin.pi);
+const piCli = process.env.PI_HOST_CLI ?? bundledCli;
+assert.equal(realpathSync(piCli), realpathSync(bundledCli), "CLI must belong to the installed selected host");
+if (process.env.PI_COMPAT_EXPECTED_PACKAGE_DIR) {
+  assert.equal(realpathSync(hostDir), realpathSync(process.env.PI_COMPAT_EXPECTED_PACKAGE_DIR));
+}
+if (process.env.PI_COMPAT_EXPECTED_VERSION) {
+  assert.equal(hostPackage.version, process.env.PI_COMPAT_EXPECTED_VERSION);
+}
 const extension = resolve(
   process.env.PI_TOOL_DURATION_TEST_EXTENSION ?? "extensions/tool-duration/index.ts",
 );
