@@ -79,7 +79,7 @@ A fast successful tool below the threshold stays unchanged. A failed tool result
 
 ## Development
 
-Run `npm ci --ignore-scripts` and `npm run check:compat` (typecheck, existing unit/native CLI tests, and pack dry-run). No production build or `prepare` is needed. The development host is pinned to official `0.86.1`; the declared `0.84.0` floor is a separate target. The host-provided Pi peer stays wildcard and optional rather than bundling a runtime.
+Run `npm ci --ignore-scripts` and `npm run check:compat` (typecheck, existing unit/native CLI tests, and pack dry-run). No production build or `prepare` is needed. The development host is pinned to official `0.86.1`. The installation requirements still document a `0.84.0` minimum; this compatibility matrix does not retest that older target. The host-provided Pi peer stays wildcard and optional rather than bundling a runtime.
 
 The runtime tests use the installed host's manifest `bin.pi` entry, not an assumed `dist/cli.js`. `PI_HOST_CLI`, `PI_COMPAT_EXPECTED_VERSION`, and `PI_COMPAT_EXPECTED_PACKAGE_DIR` can assert the selected graph. The CLI suite talks only to its localhost scripted provider in an isolated HOME.
 
