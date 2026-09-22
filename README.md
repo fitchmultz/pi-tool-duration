@@ -73,11 +73,11 @@ The model receives the output plus a host timing marker. Pi's terminal retains i
 
 ## Development
 
-Run `npm ci --ignore-scripts` and `npm run check:compat` for typechecking, unit/native runtime tests, and a pack dry-run. There is no production build or `prepare` step. The development host is pinned to official `0.87.0`; CI separately qualifies official Pi and the maintained fork. The host-provided Pi peer stays wildcard and optional rather than bundling a runtime.
+Run `npm ci --ignore-scripts` and `npm run check:compat` for typechecking, unit/native runtime tests, and an installed npm package smoke test. There is no production build or `prepare` step. The development host is pinned to official `0.87.0`; CI tests the current stable official release and current maintained fork on pull requests and weekly. The host-provided Pi peer stays wildcard and optional rather than bundling a runtime.
 
 Runtime tests use the installed host's manifest `bin.pi` entry and a local scripted Responses provider in an isolated HOME. `PI_HOST_CLI`, `PI_COMPAT_EXPECTED_VERSION`, and `PI_COMPAT_EXPECTED_PACKAGE_DIR` can assert the selected graph.
 
-The restoration test uses the installed host by default; `PI_HOST_INDEX` can select another host's absolute `dist/index.js`. It executes a timed tool and verifies reload plus separate-process disk restoration on both hosts. Native checkpoint restoration also runs when available and is required when `PI_COMPAT_HOST=fork` or `PI_REQUIRE_CHECKPOINT=1`. These tests use local scripted model completions without provider network calls or credentials.
+The runtime and restoration tests use the installed host by default; `PI_HOST_INDEX` can select another host's absolute `dist/index.js`. They execute timed tools and verify reload plus separate-process disk restoration on both hosts. Native checkpoint restoration also runs when available and is required when `PI_COMPAT_HOST=fork` or `PI_REQUIRE_CHECKPOINT=1`. These tests use local scripted model completions without provider network calls or credentials.
 
 ## License
 

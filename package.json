@@ -33,7 +33,7 @@
     "typecheck": "tsc --noEmit",
     "check:compat": "npm run check",
     "test": "node --test test/*.test.mjs",
-    "check": "npm run typecheck && npm test && npm pack --dry-run"
+    "check": "npm run typecheck && npm test"
   },
   "pi": {
     "extensions": [
