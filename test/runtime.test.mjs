@@ -9,7 +9,9 @@ import { readFileSync, realpathSync } from "node:fs";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-const hostDir = resolve(dirname(fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"))), "..");
+const hostDir = process.env.PI_HOST_INDEX
+  ? resolve(dirname(process.env.PI_HOST_INDEX), "..")
+  : resolve(dirname(fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"))), "..");
 const hostPackage = JSON.parse(readFileSync(join(hostDir, "package.json"), "utf8"));
 const bundledCli = resolve(hostDir, hostPackage.bin.pi);
 const piCli = process.env.PI_HOST_CLI ?? bundledCli;
