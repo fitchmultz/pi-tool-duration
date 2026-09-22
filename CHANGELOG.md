@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.1] - 2026-09-22
+
+### Fixed
+
+- Use distinct native response IDs in compaction fixtures so unrelated tool calls cannot be mistaken for a single response. The runtime is unchanged from 0.3.0.
+
+### Changed
+
+- Qualify current Pi hosts with focused, artifact-free compatibility checks.
+
 ## [0.3.0] - 2026-09-21
 
 ### Changed

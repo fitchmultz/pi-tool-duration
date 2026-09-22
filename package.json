@@ -1,6 +1,6 @@
 {
   "name": "pi-tool-duration",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Make host-observed Pi tool-call timing visible to the model",
   "type": "module",
   "author": "Mitch Fultz (https://github.com/fitchmultz)",
