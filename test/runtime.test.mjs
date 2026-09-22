@@ -78,7 +78,7 @@ const reasoningItem = {
   type: "reasoning", id: "rs_fixture", summary: [], encrypted_content: "opaque-fixture-reasoning",
 };
 
-function sendScriptedResponse(response, calls) {
+function sendScriptedResponse(response, calls, responseId) {
   response.writeHead(200, {
     "content-type": "text/event-stream",
     "cache-control": "no-cache",
@@ -92,7 +92,7 @@ function sendScriptedResponse(response, calls) {
     type: "message", id: "msg_done", role: "assistant", status: "completed",
     content: [{ type: "output_text", text: "done", annotations: [] }],
   }];
-  send({ type: "response.created", response: { id: "resp_fixture" } });
+  send({ type: "response.created", response: { id: responseId } });
   for (const [output_index, item] of output.entries()) {
     send({ type: "response.output_item.added", output_index, item });
     send({ type: "response.output_item.done", output_index, item });
@@ -100,7 +100,7 @@ function sendScriptedResponse(response, calls) {
   send({
     type: "response.completed",
     response: {
-      id: "resp_fixture", status: "completed", output,
+      id: responseId, status: "completed", output,
       usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
     },
   });
@@ -117,7 +117,7 @@ async function runPi({ calls, threshold, flag, reload = false, summarize, replac
       url: request.url,
       body: JSON.parse(Buffer.concat(chunks).toString("utf8")),
     });
-    sendScriptedResponse(response, requests.length === 1 ? calls : undefined);
+    sendScriptedResponse(response, requests.length === 1 ? calls : undefined, `resp_fixture_${requests.length}`);
   });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
