@@ -1,89 +1,83 @@
 # pi-tool-duration
 
-Appends `[duration: Xs]` to slow Pi tool results so the model can tell when a tool actually took time.
+Makes host-observed tool-call timing visible to the model without changing Pi's terminal output.
 
 ```text
 hi
-[duration: 5.0s]
+[host tool-call elapsed: 5.0s]
 ```
 
-## Why
-
-Pi already shows tool timing in the TUI (`Took Xs`), but that timing is UI-only. This extension adds the elapsed time to the model-visible tool result for slow calls.
+Every completed tool result is annotated by default. An optional threshold limits successful-call annotations; failed calls are always annotated.
 
 ## How it works
 
-The extension measures from Pi's `tool_execution_start` through `tool_execution_end`. When elapsed time is at or above the configured threshold, or Pi marks the result as failed, it saves the timing in a hidden session entry. Before each model request, it appends one text block to that request's copy of the tool result:
+The extension measures from Pi's `tool_execution_start` through `tool_execution_end` using a monotonic clock. It saves the timing in a hidden session entry and appends one text block to the model-request copy of the result. Durations are rounded to tenths of a second.
 
-```text
-[duration: 5.0s]
-```
+The measurement includes preflight and result processing. In a parallel batch, it can include time spent preparing later siblings, but stops when this call finishes even if another call continues. For a tool that launches a background job, it measures the launch call. Parallel durations are not additive task elapsed time.
 
-Compaction input copies put timing before the tool output so it survives Pi's truncation of long results. Recorded tool output stays unchanged, including after reload, resume, and branch navigation. Timings remain available to the model across those transitions without duplicating Pi's native TUI timing such as `Took 5.0s`.
+Recorded tool content, details, images, and native terminal rendering stay unchanged. Timings survive reload, resume, forks, branch navigation, and retained compaction history. Request-time lookup walks backward only as far as needed to find the visible results and their preceding timing records; older or unidentifiable results can require a longer walk.
 
-Markers already saved as tool text by versions through 0.2.1 remain unchanged. They cannot be safely distinguished from genuine tool output with the same text.
+Compaction input copies put timing before tool output so Pi's truncation preserves it in the summarizer's input. Generated summaries may omit individual timings. Native branch summaries exclude tool results. Historical markers keep their original text, and tool output resembling a marker is never removed or rewritten.
 
-Scope: Pi tools that emit tool execution events, including built-ins and extension tools. Direct `!` / `!!` shell commands and RPC `bash` command messages are not tool results and are not annotated.
-
-Pi starts these timers during sequential tool-call preflight. In a parallel batch, a call's elapsed time can therefore include time spent preparing later siblings. This mirrors Pi's TUI timing.
+Scope: built-in and extension tools that emit Pi execution events. Direct `!` / `!!` shell commands and RPC `bash` command messages are not tool results and are not annotated.
 
 ## Install
 
-Requires Pi 0.84.0 or later.
+Requires Pi **0.87.0 or later**. Tested against official Pi and the maintained `fitchmultz/pi` fork.
 
 ```bash
-pi install .                         # local, global settings
-pi install -l --approve .            # local, project settings
-pi install npm:pi-tool-duration      # published package
+pi install npm:pi-tool-duration
 ```
 
-## Try without installing
-
-From this repo:
+For local development:
 
 ```bash
-pi --no-extensions -e .
-# or
-pi --no-extensions -e ./extensions/tool-duration/index.ts
+pi install .                         # global settings
+pi install -l --approve .            # project settings
+pi --no-extensions -e .              # try without installing
 ```
 
-`--no-extensions` prevents a duplicate flag conflict when another copy is already installed.
+`--no-extensions` prevents a duplicate flag conflict when another copy is already installed. Restart Pi after updating extension code; `/reload` reinitializes the loaded code but does not replace it.
 
 ## Configure
 
-Default threshold: `1000` ms.
+Default threshold: **0 ms**, including fast calls.
 
 ```bash
-PI_TOOL_DURATION_THRESHOLD_MS=0 pi --no-extensions -e .   # annotate every tool result
-pi --no-extensions -e . --tool-duration-threshold-ms 500  # annotate tools taking >= 500ms
+# Restore slow/failed-only reporting:
+PI_TOOL_DURATION_THRESHOLD_MS=1000 pi --no-extensions -e .
+
+# CLI value takes precedence:
+pi --no-extensions -e . --tool-duration-threshold-ms 500
 ```
 
-Invalid values are ignored. An invalid CLI value falls through to the environment value; an invalid environment value falls back to the default.
+Invalid CLI values fall through to the environment value; invalid environment values fall back to zero. A successful result below a configured threshold stays unchanged. Missing timing does not establish a zero-duration call.
+
+## GPT-6 Astra
+
+Use Pi's native OpenAI or OpenAI Codex Responses provider. The extension uses `context_with_system` to preserve the positions of prompt and tool updates, allowing native caching and incremental requests to work.
+
+Prefer Pi's built-in model definitions. To adjust a model's limits, use [`modelOverrides`](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/models.md#per-model-overrides), which preserves native compatibility metadata. A same-ID entry in `models` replaces that metadata.
+
+Transport selection, reasoning settings, asynchronous tool execution, and steering remain Pi's responsibility. The extension does not alter provider requests or add model instructions.
 
 ## Verify
 
-In a session running the extension, ask Pi to use bash:
+Ask Pi to run a tool, for example:
 
 ```text
-Use bash to run: sleep 5; echo hi
+Use bash to run: sleep 1; echo hi
 ```
 
-The model sees:
-
-```text
-hi
-[duration: 5.0s]
-```
-
-A fast successful tool below the threshold stays unchanged. A failed tool result delivered to the model is always annotated, even below the threshold.
+The model receives the output plus a host timing marker. Pi's terminal retains its native rendering.
 
 ## Development
 
-Run `npm ci --ignore-scripts` and `npm run check:compat` (typecheck, existing unit/native CLI tests, and pack dry-run). No production build or `prepare` is needed. The development host is pinned to official `0.87.0`. The installation requirements still document a `0.84.0` minimum; this compatibility matrix does not retest that older target. The host-provided Pi peer stays wildcard and optional rather than bundling a runtime.
+Run `npm ci --ignore-scripts` and `npm run check:compat` for typechecking, unit/native runtime tests, and a pack dry-run. There is no production build or `prepare` step. The development host is pinned to official `0.87.0`; CI separately qualifies official Pi and the maintained fork. The host-provided Pi peer stays wildcard and optional rather than bundling a runtime.
 
-The runtime tests use the installed host's manifest `bin.pi` entry, not an assumed `dist/cli.js`. `PI_HOST_CLI`, `PI_COMPAT_EXPECTED_VERSION`, and `PI_COMPAT_EXPECTED_PACKAGE_DIR` can assert the selected graph. The CLI suite talks only to its localhost scripted provider in an isolated HOME.
+Runtime tests use the installed host's manifest `bin.pi` entry and a local scripted Responses provider in an isolated HOME. `PI_HOST_CLI`, `PI_COMPAT_EXPECTED_VERSION`, and `PI_COMPAT_EXPECTED_PACKAGE_DIR` can assert the selected graph.
 
-Set `PI_HOST_INDEX` to the selected host's absolute `dist/index.js` to include the native checkpoint/reload/restore regression. Missing checkpoint support is optional on official Pi, but fails when `PI_COMPAT_HOST=fork` (or `PI_REQUIRE_CHECKPOINT=1`). That regression preserves idle history and tool selection without model calls; it does not itself exercise a timing-bearing tool across cold restore.
+The restoration test uses the installed host by default; `PI_HOST_INDEX` can select another host's absolute `dist/index.js`. It executes a timed tool and verifies reload plus separate-process disk restoration on both hosts. Native checkpoint restoration also runs when available and is required when `PI_COMPAT_HOST=fork` or `PI_REQUIRE_CHECKPOINT=1`. These tests use local scripted model completions without provider network calls or credentials.
 
 ## License
 

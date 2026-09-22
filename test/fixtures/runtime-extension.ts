@@ -8,13 +8,14 @@ export default function (pi: ExtensionAPI) {
   pi.registerProvider("duration-test", {
     baseUrl: `http://127.0.0.1:${port}/v1`,
     apiKey: "local-test-key",
-    api: "openai-completions",
+    api: "openai-responses",
     models: [
       {
         id: "scripted",
         name: "Scripted duration test model",
-        reasoning: false,
-        input: ["text"],
+        reasoning: true,
+        input: ["text", "image"],
+        compat: { supportsMidConvoSystemMessages: true, supportsAdditionalTools: true },
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
         contextWindow: 16_384,
         maxTokens: 1_024,
@@ -47,12 +48,42 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
+  if (process.env.PI_TOOL_DURATION_TEST_REPLACE_TIMESTAMP === "true") {
+    pi.on("message_end", ({ message }) => {
+      if (message.role === "toolResult") return { message: { ...message, timestamp: 1 } };
+    });
+  }
+
+  pi.on("session_start", () => pi.setActiveTools(["duration_fixture"]));
+
+  pi.registerTool({
+    name: "duration_extra",
+    label: "Extra Fixture",
+    description: "A tool activated after the first timed result",
+    promptSnippet: "Extra fixture available after loading",
+    parameters: Type.Object({}),
+    async execute() {
+      return { content: [{ type: "text" as const, text: "extra-ok" }], details: undefined };
+    },
+  });
+
   pi.registerTool({
     name: "duration_fixture",
     label: "Duration Fixture",
     description: "Return deterministic results for pi-tool-duration integration tests",
+    promptSnippet: "Run duration fixtures",
     parameters: Type.Object({ action: Type.String() }),
     async execute(_toolCallId, { action }) {
+      if (action === "load") {
+        pi.setActiveTools([...pi.getActiveTools(), "duration_extra"]);
+        return {
+          content: [
+            { type: "text" as const, text: "loaded-extra" },
+            { type: "image" as const, mimeType: "image/png", data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==" },
+          ],
+          details: { status: 201 },
+        };
+      }
       if (action === "slow") {
         await new Promise((resolve) => setTimeout(resolve, 650));
         return { content: [{ type: "text" as const, text: "slow-ok" }], details: { status: 201 } };
@@ -68,7 +99,7 @@ export default function (pi: ExtensionAPI) {
       }
       if (action === "marker") {
         await new Promise((resolve) => setTimeout(resolve, 75));
-        return { content: [{ type: "text" as const, text: "[duration: 9.9s]" }], details: undefined };
+        return { content: [{ type: "text" as const, text: "[host tool-call elapsed: 9.9s]" }], details: undefined };
       }
       // Exercise Pi's normalization of JavaScript tools that omit content.
       if (action === "no_content") return {} as never;
