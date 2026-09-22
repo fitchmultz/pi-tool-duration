@@ -1,7 +1,7 @@
 {
   "name": "pi-tool-duration",
-  "version": "0.2.3",
-  "description": "Append model-visible durations to slow Pi tool results",
+  "version": "0.3.0",
+  "description": "Make host-observed Pi tool-call timing visible to the model",
   "type": "module",
   "author": "Mitch Fultz (https://github.com/fitchmultz)",
   "license": "MIT",

@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.0] - 2026-09-21
+
+### Changed
+
+- Annotate every tool result by default with `[host tool-call elapsed: Xs]`. Set `PI_TOOL_DURATION_THRESHOLD_MS=1000` to retain slow/failed-only reporting.
+- Require Pi 0.87.0 or later, using the same native extension APIs on official Pi and the maintained fork.
+- Resolve timings through a stateless backward ancestry lookup instead of rebuilding the complete historical timing map for every request.
+
+### Fixed
+
+- Preserve prompt and tool updates in model context so duration annotations do not collapse the reusable request prefix.
+- Associate timing with the finalized result when a later extension replaces its timestamp, preserving existing saved timing records.
+
+### Tests
+
+- Exercise native Responses serialization, dynamic prompt/tool prefixes, and finalized timestamps.
+- Verify actual timed results through disk restoration and maintained-fork checkpoints.
+
 ## [0.2.3] - 2026-09-18
 
 ### Fixed

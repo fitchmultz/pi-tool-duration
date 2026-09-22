@@ -1,13 +1,12 @@
 /**
  * pi-tool-duration
  *
- * Appends `[duration: Xs]` to slow or failed tool messages so the model sees
- * how long a call actually took. pi already measures this for the TUI
- * ("Took Xs") but the model does not see that timing.
+ * Adds host-observed tool-call timing to model-request copies without
+ * changing recorded tool output or Pi's native terminal rendering.
  */
-import type { ContextEvent, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ContextWithSystemEvent, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-const DEFAULT_THRESHOLD_MS = 1000;
+const DEFAULT_THRESHOLD_MS = 0;
 const TIMING_ENTRY = "pi-tool-duration";
 
 type SavedTiming = { toolCallId: string; timestamp: number; duration: string };
@@ -27,26 +26,51 @@ function thresholdMs(pi: ExtensionAPI): number {
   );
 }
 
+function timingKey(message: { timestamp: number; toolCallId: string }): string {
+  return `${message.timestamp}:${message.toolCallId}`;
+}
+
 function withDurations(
-  messages: ContextEvent["messages"],
+  messages: ContextWithSystemEvent["messages"],
   ctx: ExtensionContext,
   position: "append" | "prepend" = "append",
 ) {
+  const remaining = new Set(messages.filter((message) => message.role === "toolResult").map(timingKey));
+  if (!remaining.size) return messages;
+
   const saved = new Map<string, string>();
-  for (const entry of ctx.sessionManager.getBranch()) {
-    if (entry.type !== "custom" || entry.customType !== TIMING_ENTRY) continue;
-    const timing = entry.data as SavedTiming | undefined;
-    if (
-      typeof timing?.toolCallId !== "string" ||
-      typeof timing.timestamp !== "number" ||
-      typeof timing.duration !== "string"
-    ) continue;
-    saved.set(`${timing.timestamp}:${timing.toolCallId}`, timing.duration);
+  let pending: { key: string; toolCallId: string } | undefined;
+  // ponytail: old or unknown results can scan the full ancestry; native timing metadata would remove this join.
+  for (let id = ctx.sessionManager.getLeafId(); id && remaining.size;) {
+    const entry = ctx.sessionManager.getEntry(id);
+    if (!entry) break;
+    id = entry.parentId;
+    if (entry.type === "message") {
+      if (pending) {
+        remaining.delete(pending.key);
+        pending = undefined;
+        if (!remaining.size) break;
+      }
+      if (entry.message.role === "toolResult" && remaining.has(timingKey(entry.message))) {
+        pending = { key: timingKey(entry.message), toolCallId: entry.message.toolCallId };
+      }
+    } else if (pending && entry.type === "custom" && entry.customType === TIMING_ENTRY) {
+      const timing = entry.data as SavedTiming | undefined;
+      if (
+        typeof timing?.toolCallId !== "string" ||
+        typeof timing.timestamp !== "number" ||
+        typeof timing.duration !== "string"
+      ) continue;
+      // The following result's timestamp may have been replaced by another message_end handler.
+      if (timing.toolCallId === pending.toolCallId) saved.set(pending.key, timing.duration);
+      remaining.delete(pending.key);
+      pending = undefined;
+    }
   }
 
   return messages.map((message) => {
     if (message.role !== "toolResult") return message;
-    const duration = saved.get(`${message.timestamp}:${message.toolCallId}`);
+    const duration = saved.get(timingKey(message));
     if (!duration) return message;
     const marker = { type: "text" as const, text: duration };
     return {
@@ -77,7 +101,7 @@ export default function (pi: ExtensionAPI) {
 
     const ms = performance.now() - startedAt;
     if (!event.isError && ms < thresholdMs(pi)) return;
-    durations.set(event.toolCallId, `[duration: ${(ms / 1000).toFixed(1)}s]`);
+    durations.set(event.toolCallId, `[host tool-call elapsed: ${(ms / 1000).toFixed(1)}s]`);
   });
 
   pi.on("message_end", (event) => {
@@ -94,7 +118,7 @@ export default function (pi: ExtensionAPI) {
     });
   });
 
-  pi.on("context", (event, ctx) => ({ messages: withDurations(event.messages, ctx) }));
+  pi.on("context_with_system", (event, ctx) => ({ messages: withDurations(event.messages, ctx) }));
 
   pi.on("session_before_compact", ({ preparation }, ctx) => {
     // Native summarization bypasses context hooks and truncates tool text from the end.

@@ -74,16 +74,9 @@ async function runProcess(args, env) {
   }
 }
 
-function chunk(model, choices, usage) {
-  return {
-    id: "chatcmpl-pi-tool-duration",
-    object: "chat.completion.chunk",
-    created: Math.floor(Date.now() / 1000),
-    model,
-    choices,
-    ...(usage ? { usage } : {}),
-  };
-}
+const reasoningItem = {
+  type: "reasoning", id: "rs_fixture", summary: [], encrypted_content: "opaque-fixture-reasoning",
+};
 
 function sendScriptedResponse(response, calls) {
   response.writeHead(200, {
@@ -91,52 +84,30 @@ function sendScriptedResponse(response, calls) {
     "cache-control": "no-cache",
     connection: "close",
   });
-
-  const model = "scripted";
-  if (calls) {
-    response.write(
-      `data: ${JSON.stringify(
-        chunk(model, [
-          {
-            index: 0,
-            delta: {
-              role: "assistant",
-              tool_calls: calls.map((call, index) => ({
-                index,
-                id: `call_${index}`,
-                type: "function",
-                function: { name: call.name, arguments: JSON.stringify(call.arguments) },
-              })),
-            },
-            finish_reason: null,
-          },
-        ]),
-      )}\n\n`,
-    );
-    response.write(
-      `data: ${JSON.stringify(
-        chunk(model, [{ index: 0, delta: {}, finish_reason: "tool_calls" }]),
-      )}\n\n`,
-    );
-  } else {
-    response.write(
-      `data: ${JSON.stringify(
-        chunk(model, [{ index: 0, delta: { role: "assistant", content: "done" }, finish_reason: null }]),
-      )}\n\n`,
-    );
-    response.write(
-      `data: ${JSON.stringify(chunk(model, [{ index: 0, delta: {}, finish_reason: "stop" }]))}\n\n`,
-    );
+  const send = (event) => response.write(`data: ${JSON.stringify(event)}\n\n`);
+  const output = calls ? [reasoningItem, ...calls.map((call, index) => ({
+    type: "function_call", id: `fc_${index}`, call_id: `call_${index}`,
+    name: call.name, arguments: JSON.stringify(call.arguments), status: "completed",
+  }))] : [{
+    type: "message", id: "msg_done", role: "assistant", status: "completed",
+    content: [{ type: "output_text", text: "done", annotations: [] }],
+  }];
+  send({ type: "response.created", response: { id: "resp_fixture" } });
+  for (const [output_index, item] of output.entries()) {
+    send({ type: "response.output_item.added", output_index, item });
+    send({ type: "response.output_item.done", output_index, item });
   }
-  response.write(
-    `data: ${JSON.stringify(
-      chunk(model, [], { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }),
-    )}\n\n`,
-  );
-  response.end("data: [DONE]\n\n");
+  send({
+    type: "response.completed",
+    response: {
+      id: "resp_fixture", status: "completed", output,
+      usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+    },
+  });
+  response.end();
 }
 
-async function runPi({ calls, threshold = "60000", flag, reload = false, summarize }) {
+async function runPi({ calls, threshold, flag, reload = false, summarize, replaceTimestamp = false }) {
   const requests = [];
   const server = createServer(async (request, response) => {
     const chunks = [];
@@ -152,8 +123,9 @@ async function runPi({ calls, threshold = "60000", flag, reload = false, summari
   await once(server, "listening");
   const { port } = server.address();
   const isolation = await isolatedEnvironment({
-    PI_TOOL_DURATION_THRESHOLD_MS: threshold,
+    ...(threshold === undefined ? {} : { PI_TOOL_DURATION_THRESHOLD_MS: threshold }),
     PI_TOOL_DURATION_TEST_PORT: String(port),
+    PI_TOOL_DURATION_TEST_REPLACE_TIMESTAMP: String(replaceTimestamp),
   });
 
   if (summarize) {
@@ -170,8 +142,6 @@ async function runPi({ calls, threshold = "60000", flag, reload = false, summari
     "--extension",
     fixture,
     "--no-builtin-tools",
-    "--tools",
-    "duration_fixture",
     "--no-context-files",
     "--no-skills",
     "--no-prompt-templates",
@@ -184,7 +154,7 @@ async function runPi({ calls, threshold = "60000", flag, reload = false, summari
     "--model",
     "duration-test/scripted",
     "--thinking",
-    "off",
+    "low",
   ];
   if (flag !== undefined) args.push("--tool-duration-threshold-ms", flag);
   args.push("-p", "Run the scripted test scenario.");
@@ -200,12 +170,12 @@ async function runPi({ calls, threshold = "60000", flag, reload = false, summari
     assert.equal(requests.length, 2 + Number(reload) + Number(Boolean(summarize)) + Number(summarize === "history"), stderr);
     for (const request of requests) {
       assert.equal(request.method, "POST");
-      assert.equal(request.url, "/v1/chat/completions");
+      assert.equal(request.url, "/v1/responses");
       assert.equal(request.body.model, "scripted");
       assert.equal(request.body.stream, true);
     }
-    assert.ok(requests[0].body.tools.some((tool) => tool.function.name === "duration_fixture"));
-    assert.ok(requests[1].body.messages.some((message) => message.role === "tool"));
+    assert.ok(requests[0].body.tools.some((tool) => tool.name === "duration_fixture"));
+    assert.ok(requests[1].body.input.some((message) => message.type === "function_call_output"));
 
     return {
       stderr,
@@ -233,11 +203,11 @@ function textBlocks(message) {
 }
 
 function modelToolOutputs(request) {
-  return request.body.messages.filter((message) => message.role === "tool").map((message) => message.content);
+  return request.body.input.filter((item) => item.type === "function_call_output").map((item) => item.output);
 }
 
 function durationSeconds(text) {
-  const match = /(?:^|\n)\[duration: (\d+\.\d)s\]$/.exec(text);
+  const match = /(?:^|\n)\[host tool-call elapsed: (\d+\.\d)s\]$/.exec(text);
   assert.ok(match, `invalid duration marker: ${text}`);
   return Number(match[1]);
 }
@@ -302,17 +272,16 @@ test("measures slow tool output that looks like a duration marker", async () => 
 
   const [message] = toolMessages(events);
   const texts = textBlocks(message);
-  assert.deepEqual(texts, ["[duration: 9.9s]"]);
+  assert.deepEqual(texts, ["[host tool-call elapsed: 9.9s]"]);
   const [output] = modelToolOutputs(requests[1]);
-  assert.ok(output.startsWith("[duration: 9.9s]\n"));
-  assert.equal(output.match(/\[duration:/g).length, 2);
+  assert.ok(output.startsWith("[host tool-call elapsed: 9.9s]\n"));
+  assert.equal(output.match(/\[host tool-call elapsed:/g).length, 2);
   durationSeconds(output);
 });
 
-test("keeps durations model-visible without duplicating tool execution output", async () => {
+test("times every tool by default without duplicating tool execution output", async () => {
   const { events, requests } = await runPi({
     calls: [{ name: "duration_fixture", arguments: { action: "fast" } }],
-    threshold: "0",
   });
 
   const executionEnd = events.find((event) => event.type === "tool_execution_end");
@@ -321,8 +290,61 @@ test("keeps durations model-visible without duplicating tool execution output", 
   const [message] = toolMessages(events);
   assert.deepEqual(textBlocks(message), ["fast-ok"]);
 
-  const outboundTool = requests[1].body.messages.find((item) => item.role === "tool");
-  assert.match(JSON.stringify(outboundTool), /\[duration: \d+\.\ds\]/);
+  const outboundTool = requests[1].body.input.find((item) => item.type === "function_call_output");
+  assert.match(JSON.stringify(outboundTool), /\[host tool-call elapsed: \d+\.\ds\]/);
+});
+
+test("preserves the native Responses prefix when a timed tool activates another tool", async () => {
+  const { events, requests } = await runPi({
+    calls: [{ name: "duration_fixture", arguments: { action: "load" } }],
+    threshold: "0",
+  });
+  const [initial, next] = requests.map((request) => request.body);
+  assert.deepEqual(initial.tools.map((tool) => tool.name), ["duration_fixture"]);
+  assert.deepEqual(next.tools, initial.tools, "initial tool declarations must not be hoisted or replaced");
+  assert.deepEqual(next.input.slice(0, initial.input.length), initial.input, "the prompt prefix must stay byte-for-byte stable");
+  const resultIndex = next.input.findIndex((item) => item.type === "function_call_output");
+  const additionIndex = next.input.findIndex((item) => item.type === "additional_tools");
+  assert.ok(additionIndex > resultIndex, "new tools belong inline after the timed result");
+  assert.deepEqual(next.input[additionIndex].tools.map((tool) => tool.name), ["duration_extra"]);
+  assert.match(JSON.stringify(next.input.slice(additionIndex + 1)), /Extra fixture available after loading/);
+  assert.deepEqual(next.input.find((item) => item.type === "reasoning"), reasoningItem);
+  const call = next.input.find((item) => item.type === "function_call");
+  const result = next.input[resultIndex];
+  assert.equal(call.call_id, result.call_id);
+  const [message] = toolMessages(events);
+  assert.equal(message.toolCallId, "call_0|fc_0");
+  assert.deepEqual(message.content, [
+    { type: "text", text: "loaded-extra" },
+    { type: "image", mimeType: "image/png", data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==" },
+  ]);
+  assert.deepEqual(message.details, { status: 201 });
+  assert.deepEqual(events.find((event) => event.type === "tool_execution_end").result.content, message.content);
+  assert.equal(result.output.length, 2);
+  assert.ok(result.output[0].text.startsWith("loaded-extra\n"));
+  durationSeconds(result.output[0].text);
+  assert.deepEqual(result.output[1], {
+    type: "input_image", detail: "auto", image_url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==",
+  });
+  assert.ok(!JSON.stringify(next).includes('"status":201'), "raw tool details must stay off the wire");
+});
+
+test("retains timing when a later message_end handler replaces the result timestamp", async () => {
+  const { events, requests } = await runPi({
+    calls: [{ name: "duration_fixture", arguments: { action: "status" } }],
+    replaceTimestamp: true,
+    threshold: "0",
+  });
+  const [message] = toolMessages(events);
+  assert.equal(message.timestamp, 1);
+  assert.deepEqual(textBlocks(message), ["status-ok"]);
+  assert.deepEqual(message.details, { status: 200 });
+  assert.deepEqual(events.find((event) => event.type === "tool_execution_end").result, {
+    content: [{ type: "text", text: "status-ok" }], details: { status: 200 },
+  });
+  const [output] = modelToolOutputs(requests[1]);
+  assert.ok(output.startsWith("status-ok\n"));
+  durationSeconds(output);
 });
 
 test("retains model-only timing after reloading extensions without duplicating it", async () => {
@@ -337,7 +359,7 @@ test("retains model-only timing after reloading extensions without duplicating i
   const [after] = modelToolOutputs(requests[2]);
   durationSeconds(before);
   assert.equal(after, before);
-  assert.equal(after.match(/\[duration:/g).length, 1);
+  assert.equal(after.match(/\[host tool-call elapsed:/g).length, 1);
 });
 
 for (const summarize of ["prefix", "history"]) {
@@ -357,11 +379,11 @@ for (const summarize of ["prefix", "history"]) {
       assert.deepEqual(textBlocks(executionEnd.result), [originalText]);
       const [output] = modelToolOutputs(requests[1]);
       durationSeconds(output);
-      const durations = output.match(/\[duration: \d+\.\ds\]/g);
+      const durations = output.match(/\[host tool-call elapsed: \d+\.\ds\]/g);
       assert.equal(durations.length, 1);
       const [duration] = durations;
       assert.equal(output, `${originalText}\n${duration}`);
-      const summaryInput = JSON.stringify(requests.at(-1).body.messages);
+      const summaryInput = JSON.stringify(requests.at(-1).body.input);
       assert.ok(summaryInput.includes(originalText.slice(0, 100)), summaryInput);
       if (action === "long") {
         assert.match(summaryInput, /more characters truncated/);
@@ -373,7 +395,7 @@ for (const summarize of ["prefix", "history"]) {
         entry.type === "message" && entry.message.role === "toolResult").message;
       assert.deepEqual(recorded, message);
       assert.ok(summaryInput.includes(duration), "summarizer must receive the original timing");
-      assert.equal(summaryInput.match(/\[duration:/g).length, 1);
+      assert.equal(summaryInput.match(/\[host tool-call elapsed:/g).length, 1);
     });
   }
 }
@@ -381,6 +403,7 @@ for (const summarize of ["prefix", "history"]) {
 test("annotates failures blocked during tool preflight", async () => {
   const { events, requests } = await runPi({
     calls: [{ name: "duration_fixture", arguments: { action: "blocked" } }],
+    threshold: "60000",
   });
 
   const [message] = toolMessages(events);
@@ -403,6 +426,7 @@ test("normalizes missing tool content before appending a duration", async () => 
 
 test("only failed fast results bypass a high threshold", async () => {
   const { events, requests } = await runPi({
+    threshold: "60000",
     calls: [
       { name: "duration_fixture", arguments: { action: "exit_text" } },
       { name: "duration_fixture", arguments: { action: "status" } },

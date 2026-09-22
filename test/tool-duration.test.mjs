@@ -42,13 +42,62 @@ async function recordTool(handlers, sessionManager, message) {
 }
 
 function modelContext(handlers, sessionManager) {
-  return handlers.get("context")(
+  return (handlers.get("context_with_system") ?? handlers.get("context"))(
     { messages: structuredClone(sessionManager.buildSessionContext().messages) },
     { sessionManager },
   ).messages;
 }
 
 const texts = (message) => message.content.map((item) => item.text);
+
+test("associates legacy timing with the finalized result timestamp", () => {
+  const sessionManager = SessionManager.inMemory();
+  sessionManager.appendCustomEntry("pi-tool-duration", {
+    toolCallId: "call", timestamp: 123, duration: "[duration: 1.5s]",
+  });
+  sessionManager.appendCustomEntry("other-extension", { value: 1 });
+  const message = { ...toolMessage("call", 456).message, content: [{ type: "text", text: "original" }] };
+  const resultId = sessionManager.appendMessage(message);
+  const handlers = loadExtension(sessionManager);
+
+  assert.deepEqual(texts(modelContext(handlers, sessionManager)[0]), ["original", "[duration: 1.5s]"]);
+  sessionManager.appendCompaction("summary", resultId, 100);
+  assert.deepEqual(texts(modelContext(handlers, sessionManager).find((item) => item.role === "toolResult")), ["original", "[duration: 1.5s]"]);
+  assert.deepEqual(message.content, [{ type: "text", text: "original" }]);
+});
+
+test("looks up only recent ancestry and skips history when there are no tool results", () => {
+  const sessionManager = SessionManager.inMemory();
+  for (let i = 0; i < 1000; i++) {
+    sessionManager.appendMessage({ role: "user", content: "archived", timestamp: i });
+  }
+  sessionManager.appendCustomEntry("pi-tool-duration", {
+    toolCallId: "timed", timestamp: 1, duration: "[duration: 1.5s]",
+  });
+  sessionManager.appendCustomEntry("other-extension", { value: 1 });
+  const timed = toolMessage("timed", 1001).message;
+  const fast = toolMessage("fast", 1002).message;
+  sessionManager.appendMessage(timed);
+  sessionManager.appendMessage(fast);
+  let reads = 0;
+  const manager = {
+    getLeafId: () => sessionManager.getLeafId(),
+    getEntry(id) { reads++; return sessionManager.getEntry(id); },
+    getBranch() { assert.fail("Request lookup must not rebuild the full branch"); },
+  };
+  const handlers = loadExtension(sessionManager);
+  const context = handlers.get("context_with_system") ?? handlers.get("context");
+  const result = context({ messages: structuredClone([timed, fast]) }, { sessionManager: manager });
+  assert.deepEqual(result.messages.map(texts), [["[duration: 1.5s]"], []]);
+  assert.equal(reads, 4);
+
+  reads = 0;
+  context({ messages: [structuredClone(fast)] }, { sessionManager: manager });
+  assert.equal(reads, 2, "A fast result stops at its previous message boundary");
+  reads = 0;
+  context({ messages: [] }, { sessionManager: manager });
+  assert.equal(reads, 0);
+});
 
 test("clears pending timings on startup and agent completion", async () => {
   const sessionManager = SessionManager.inMemory();
@@ -110,7 +159,7 @@ test("restores timing from serialized entries without changing recorded content 
   const [first] = modelContext(reloadedHandlers, restored);
   assert.equal(texts(first)[0], "[duration: 9.9s]");
   assert.equal(texts(first).length, 2);
-  assert.match(texts(first)[1], /^\[duration: \d+\.\ds\]$/);
+  assert.match(texts(first)[1], /^\[host tool-call elapsed: \d+\.\ds\]$/);
   assert.deepEqual(first.details, original.details);
   assert.deepEqual(modelContext(reloadedHandlers, restored), [first]);
   assert.deepEqual(restored.buildSessionContext().messages, [original]);
