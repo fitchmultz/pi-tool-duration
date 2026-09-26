@@ -7,7 +7,7 @@ function loadExtension(sessionManager = SessionManager.inMemory(), threshold = "
   const handlers = new Map();
   toolDuration({
     on(name, handler) {
-      handlers.set(name, handler);
+      handlers.set(name, (event, ctx = { sessionManager }) => handler(event, ctx));
     },
     registerFlag() {},
     getFlag() {
@@ -50,6 +50,19 @@ function modelContext(handlers, sessionManager) {
 
 const texts = (message) => message.content.map((item) => item.text);
 
+function assistantCalls(...ids) {
+  return {
+    role: "assistant",
+    content: ids.map((id) => ({ type: "toolCall", id, name: "fixture", arguments: {} })),
+    api: "openai-responses",
+    provider: "fixture",
+    model: "fixture",
+    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+    stopReason: "toolUse",
+    timestamp: 0,
+  };
+}
+
 test("associates legacy timing with the finalized result timestamp", () => {
   const sessionManager = SessionManager.inMemory();
   sessionManager.appendCustomEntry("pi-tool-duration", {
@@ -71,6 +84,7 @@ test("looks up only recent ancestry and skips history when there are no tool res
   for (let i = 0; i < 1000; i++) {
     sessionManager.appendMessage({ role: "user", content: "archived", timestamp: i });
   }
+  sessionManager.appendMessage(assistantCalls("timed", "fast"));
   sessionManager.appendCustomEntry("pi-tool-duration", {
     toolCallId: "timed", timestamp: 1, duration: "[duration: 1.5s]",
   });
@@ -89,11 +103,11 @@ test("looks up only recent ancestry and skips history when there are no tool res
   const context = handlers.get("context_with_system") ?? handlers.get("context");
   const result = context({ messages: structuredClone([timed, fast]) }, { sessionManager: manager });
   assert.deepEqual(result.messages.map(texts), [["[duration: 1.5s]"], []]);
-  assert.equal(reads, 4);
+  assert.equal(reads, 5, "Lookup stops at the assistant message that issued the calls");
 
   reads = 0;
   context({ messages: [structuredClone(fast)] }, { sessionManager: manager });
-  assert.equal(reads, 2, "A fast result stops at its previous message boundary");
+  assert.equal(reads, 5, "An untimed result stops at its issuing assistant message");
   reads = 0;
   context({ messages: [] }, { sessionManager: manager });
   assert.equal(reads, 0);
@@ -185,4 +199,64 @@ test("uses only the active branch and distinguishes reused tool call IDs", async
   await recordTool(fastHandlers, sessionManager, toolMessage("reused", 2).message);
   const branched = modelContext(handlers, sessionManager).find((item) => item.role === "toolResult");
   assert.deepEqual(texts(branched), []);
+});
+
+test("annotates results published after all of their concurrent timings", async () => {
+  const sessionManager = SessionManager.inMemory();
+  sessionManager.appendMessage(assistantCalls("fast", "slow"));
+  const handlers = loadExtension(sessionManager);
+  const fast = toolMessage("fast", 10).message;
+  const slow = toolMessage("slow", 11).message;
+  for (const { toolCallId } of [fast, slow]) {
+    await handlers.get("tool_execution_start")({ toolCallId });
+    await handlers.get("tool_execution_end")({ toolCallId, isError: false });
+  }
+  // Native async completions persist timing A, timing B, result A, result B.
+  await handlers.get("message_end")({ message: fast });
+  await handlers.get("message_end")({ message: slow });
+  sessionManager.appendMessage(fast);
+  sessionManager.appendMessage(slow);
+
+  const results = modelContext(handlers, sessionManager);
+  assert.equal(results.length, 3);
+  for (const result of results.slice(1)) {
+    assert.equal(result.content.length, 1);
+    assert.match(texts(result)[0], /^\[host tool-call elapsed: \d+\.\ds\]$/);
+  }
+});
+
+test("sums measured spans across a fork detach and cold resume", async (t) => {
+  let clock = 0;
+  t.mock.method(performance, "now", () => clock);
+  const entries = [];
+  const append = (entry) => entries.push({ id: String(entries.length + 1), parentId: entries.at(-1)?.id ?? null, ...entry });
+  const journal = {
+    appendCustomEntry: (customType, data) => append({ type: "custom", customType, data }),
+    getLeafId: () => entries.at(-1)?.id ?? null,
+    getEntry: (id) => entries[Number(id) - 1],
+  };
+  const issued = assistantCalls("delegate");
+  append({ type: "message", message: issued });
+
+  const before = loadExtension(journal, "500");
+  await before.get("tool_execution_start")({ toolCallId: "delegate" });
+  clock += 10_622;
+  await before.get("tool_execution_detached")({ toolCallId: "delegate" });
+  await before.get("agent_end")();
+  append({ type: "message", message: { role: "user", content: "continue", timestamp: 1 } });
+  // The fork snapshots the call again when it resumes; only the original message bounds the lookup.
+  append({ type: "message", checkpoint: true, message: issued });
+
+  const after = loadExtension(journal, "500");
+  await after.get("session_start")();
+  clock += 5_000;
+  await after.get("tool_execution_start")({ toolCallId: "delegate" });
+  clock += 76;
+  await after.get("tool_execution_end")({ toolCallId: "delegate", isError: false });
+  await after.get("message_end")(toolMessage("delegate", 2));
+
+  assert.deepEqual(entries.filter((entry) => entry.type === "custom").map((entry) => entry.data), [
+    { toolCallId: "delegate", elapsedMs: 10_622 },
+    { toolCallId: "delegate", timestamp: 2, duration: "[host tool-call elapsed: 10.7s]" },
+  ]);
 });

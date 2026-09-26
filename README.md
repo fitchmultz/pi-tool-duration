@@ -13,17 +13,17 @@ Every completed tool result is annotated by default. An optional threshold limit
 
 The extension measures from Pi's `tool_execution_start` through `tool_execution_end` using a monotonic clock. It saves the timing in a hidden session entry and appends one text block to the model-request copy of the result. Durations are rounded to tenths of a second.
 
-The measurement includes preflight and result processing. In a parallel batch, it can include time spent preparing later siblings, but stops when this call finishes even if another call continues. For a tool that launches a background job, it measures the launch call. Parallel durations are not additive task elapsed time.
+The measurement includes preflight and result processing. In a parallel batch, it can include time spent preparing later siblings, but stops when this call finishes even if another call continues. For a tool that launches a background job, it measures the launch call. Parallel durations are not additive task elapsed time. On the maintained fork, a native async call that detaches and later resumes reports the sum of its observed active spans; time spent detached is not observed and is excluded.
 
-Recorded tool content, details, images, and native terminal rendering stay unchanged. Timings survive reload, resume, forks, branch navigation, and retained compaction history. Request-time lookup walks backward only as far as needed to find the visible results and their preceding timing records; older or unidentifiable results can require a longer walk.
+Recorded tool content, details, images, and native terminal rendering stay unchanged. Timings survive reload, resume, forks, branch navigation, and retained compaction history. Request-time lookup walks backward only as far as the assistant messages that issued the visible results; older or unidentifiable results can require a longer walk.
 
 Compaction input copies put timing before tool output so Pi's truncation preserves it in the summarizer's input. Generated summaries may omit individual timings. Native branch summaries exclude tool results. Historical markers keep their original text, and tool output resembling a marker is never removed or rewritten.
 
-Scope: built-in and extension tools that emit Pi execution events. Direct `!` / `!!` shell commands and RPC `bash` command messages are not tool results and are not annotated.
+Scope: built-in and extension tools that emit Pi execution events. Direct `!` / `!!` shell commands and RPC `bash` command messages are not tool results and are not annotated. On the maintained fork, a live WebSocket steering continuation delivers an async result before any request hook runs, so that first delivery has no marker; later requests include it.
 
 ## Install
 
-Requires Pi **0.87.0 or later**. Tested against official Pi and the maintained `fitchmultz/pi` fork.
+Requires Pi **0.87.0 or later** on Node.js **24 or later**. Tested against official Pi and the maintained `fitchmultz/pi` fork.
 
 ```bash
 pi install npm:pi-tool-duration
@@ -73,7 +73,7 @@ The model receives the output plus a host timing marker. Pi's terminal retains i
 
 ## Development
 
-Run `npm ci --ignore-scripts` and `npm run check:compat` for typechecking, unit/native runtime tests, and an installed npm package smoke test. There is no production build or `prepare` step. The development host is pinned to official `0.87.0`; CI tests the current stable official release and current maintained fork on pull requests and weekly. The host-provided Pi peer stays wildcard and optional rather than bundling a runtime.
+Run `npm ci --ignore-scripts` and `npm run check` on Node.js 24 for typechecking, unit/native runtime tests, and an installed npm package smoke test. There is no production build or `prepare` step. The development host is pinned to official `0.87.1`; CI tests the current stable official release and current maintained fork on pull requests and weekly. The host-provided Pi peer stays wildcard and optional rather than bundling a runtime. The lockfile resolves every package from the public npm registry.
 
 Runtime tests use the installed host's manifest `bin.pi` entry and a local scripted Responses provider in an isolated HOME. `PI_HOST_CLI`, `PI_COMPAT_EXPECTED_VERSION`, and `PI_COMPAT_EXPECTED_PACKAGE_DIR` can assert the selected graph.
 

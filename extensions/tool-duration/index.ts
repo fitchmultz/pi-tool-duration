@@ -4,12 +4,33 @@
  * Adds host-observed tool-call timing to model-request copies without
  * changing recorded tool output or Pi's native terminal rendering.
  */
-import type { ContextWithSystemEvent, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type {
+  ContextWithSystemEvent,
+  ExtensionAPI,
+  ExtensionContext,
+  ExtensionHandler,
+  SessionEntry,
+} from "@earendil-works/pi-coding-agent";
+
+declare module "@earendil-works/pi-coding-agent" {
+  interface ExtensionAPI {
+    /**
+     * Maintained fork only: emitted instead of tool_execution_end when a native async call
+     * detaches. The same call later resumes with a new start. Official Pi never emits it.
+     */
+    on(
+      event: "tool_execution_detached",
+      handler: ExtensionHandler<{ type: "tool_execution_detached"; toolCallId: string }>,
+    ): () => void;
+  }
+}
 
 const DEFAULT_THRESHOLD_MS = 0;
 const TIMING_ENTRY = "pi-tool-duration";
+const DETACHED_ENTRY = "pi-tool-duration-detached";
 
 type SavedTiming = { toolCallId: string; timestamp: number; duration: string };
+type DetachedSpan = { toolCallId: string; elapsedMs: number };
 
 function parseThreshold(value: unknown): number | undefined {
   if (typeof value !== "string" && typeof value !== "number") return undefined;
@@ -30,6 +51,36 @@ function timingKey(message: { timestamp: number; toolCallId: string }): string {
   return `${message.timestamp}:${message.toolCallId}`;
 }
 
+function* ancestry(ctx: ExtensionContext): Generator<SessionEntry> {
+  for (let id = ctx.sessionManager.getLeafId(); id;) {
+    const entry = ctx.sessionManager.getEntry(id);
+    if (!entry) return;
+    id = entry.parentId;
+    yield entry;
+  }
+}
+
+/** Call IDs issued by an original assistant message; the fork's checkpoint snapshots repeat them. */
+function issuedCallIds(entry: SessionEntry): string[] {
+  if (entry.type !== "message" || entry.message.role !== "assistant" || ("checkpoint" in entry && entry.checkpoint)) {
+    return [];
+  }
+  return entry.message.content.flatMap((block) => (block.type === "toolCall" ? [block.id] : []));
+}
+
+function detachedMs(ctx: ExtensionContext, toolCallId: string): number {
+  let total = 0;
+  for (const entry of ancestry(ctx)) {
+    if (entry.type === "custom" && entry.customType === DETACHED_ENTRY) {
+      const span = entry.data as DetachedSpan | undefined;
+      if (span?.toolCallId === toolCallId && typeof span.elapsedMs === "number") total += span.elapsedMs;
+    } else if (issuedCallIds(entry).includes(toolCallId)) {
+      break;
+    }
+  }
+  return total;
+}
+
 function withDurations(
   messages: ContextWithSystemEvent["messages"],
   ctx: ExtensionContext,
@@ -39,33 +90,39 @@ function withDurations(
   if (!remaining.size) return messages;
 
   const saved = new Map<string, string>();
-  let pending: { key: string; toolCallId: string } | undefined;
+  // Results published together can follow all of their timings, so match by call ID until the issuing message.
+  const pending = new Map<string, string>();
   // ponytail: old or unknown results can scan the full ancestry; native timing metadata would remove this join.
-  for (let id = ctx.sessionManager.getLeafId(); id && remaining.size;) {
-    const entry = ctx.sessionManager.getEntry(id);
-    if (!entry) break;
-    id = entry.parentId;
-    if (entry.type === "message") {
-      if (pending) {
-        remaining.delete(pending.key);
-        pending = undefined;
-        if (!remaining.size) break;
-      }
-      if (entry.message.role === "toolResult" && remaining.has(timingKey(entry.message))) {
-        pending = { key: timingKey(entry.message), toolCallId: entry.message.toolCallId };
-      }
-    } else if (pending && entry.type === "custom" && entry.customType === TIMING_ENTRY) {
+  for (const entry of ancestry(ctx)) {
+    if (entry.type === "message" && entry.message.role === "toolResult") {
+      const key = timingKey(entry.message);
+      if (!remaining.has(key)) continue;
+      // A reused call ID: the newer result had no timing between the two results.
+      const newer = pending.get(entry.message.toolCallId);
+      if (newer) remaining.delete(newer);
+      pending.set(entry.message.toolCallId, key);
+    } else if (entry.type === "custom" && entry.customType === TIMING_ENTRY) {
       const timing = entry.data as SavedTiming | undefined;
       if (
         typeof timing?.toolCallId !== "string" ||
         typeof timing.timestamp !== "number" ||
         typeof timing.duration !== "string"
       ) continue;
-      // The following result's timestamp may have been replaced by another message_end handler.
-      if (timing.toolCallId === pending.toolCallId) saved.set(pending.key, timing.duration);
-      remaining.delete(pending.key);
-      pending = undefined;
+      // Match by call ID: another message_end handler may have replaced the result's timestamp.
+      const key = pending.get(timing.toolCallId);
+      if (!key) continue;
+      saved.set(key, timing.duration);
+      remaining.delete(key);
+      pending.delete(timing.toolCallId);
+    } else {
+      for (const id of issuedCallIds(entry)) {
+        const key = pending.get(id);
+        if (!key) continue;
+        remaining.delete(key);
+        pending.delete(id);
+      }
     }
+    if (!remaining.size) break;
   }
 
   return messages.map((message) => {
@@ -94,12 +151,23 @@ export default function (pi: ExtensionAPI) {
     starts.set(event.toolCallId, performance.now());
   });
 
-  pi.on("tool_execution_end", (event) => {
+  pi.on("tool_execution_detached", (event) => {
+    const startedAt = starts.get(event.toolCallId);
+    starts.delete(event.toolCallId);
+    if (startedAt === undefined) return;
+    pi.appendEntry<DetachedSpan>(DETACHED_ENTRY, {
+      toolCallId: event.toolCallId,
+      elapsedMs: performance.now() - startedAt,
+    });
+  });
+
+  pi.on("tool_execution_end", (event, ctx) => {
     const startedAt = starts.get(event.toolCallId);
     starts.delete(event.toolCallId);
     if (startedAt === undefined) return;
 
-    const ms = performance.now() - startedAt;
+    // Detached waiting time is not observed, so only the measured active spans are summed.
+    const ms = performance.now() - startedAt + detachedMs(ctx, event.toolCallId);
     if (!event.isError && ms < thresholdMs(pi)) return;
     durations.set(event.toolCallId, `[host tool-call elapsed: ${(ms / 1000).toFixed(1)}s]`);
   });
