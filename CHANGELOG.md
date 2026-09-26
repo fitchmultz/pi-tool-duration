@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0] - 2026-09-26
+
+### Fixed
+
+- Annotate every result when concurrent native async completions persist all of their timings before any result. Timings are matched by call ID up to the issuing assistant message.
+- Keep measured time for fork native async calls that detach and resume, including across restarts. The reported duration sums the observed active spans and excludes detached time.
+
+### Changed
+
+- Require Node.js 24 or later and develop against Pi 0.87.1, TypeScript 7, and Node 24 types.
+- Regenerate the development lockfile from scratch on the public npm registry.
+
 ## [0.3.1] - 2026-09-22
 
 ### Fixed
