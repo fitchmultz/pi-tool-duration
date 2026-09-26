@@ -32,7 +32,8 @@
   "scripts": {
     "typecheck": "tsc",
     "test": "node --test test/*.test.mjs",
-    "check": "npm run typecheck && npm test"
+    "check": "npm run typecheck && npm test",
+    "check:compat": "npm run check"
   },
   "pi": {
     "extensions": [
