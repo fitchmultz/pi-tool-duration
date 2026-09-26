@@ -281,16 +281,16 @@ test("measures slow tool output that looks like a duration marker", async () => 
   durationSeconds(output);
 });
 
-test("times every tool by default without duplicating tool execution output", async () => {
+test("times slower tools by default without duplicating tool execution output", async () => {
   const { events, requests } = await runPi({
-    calls: [{ name: "duration_fixture", arguments: { action: "fast" } }],
+    calls: [{ name: "duration_fixture", arguments: { action: "slow" } }],
   });
 
   const executionEnd = events.find((event) => event.type === "tool_execution_end");
-  assert.deepEqual(textBlocks(executionEnd.result), ["fast-ok"]);
+  assert.deepEqual(textBlocks(executionEnd.result), ["slow-ok"]);
 
   const [message] = toolMessages(events);
-  assert.deepEqual(textBlocks(message), ["fast-ok"]);
+  assert.deepEqual(textBlocks(message), ["slow-ok"]);
 
   const outboundTool = requests[1].body.input.find((item) => item.type === "function_call_output");
   assert.match(JSON.stringify(outboundTool), /\[host tool-call elapsed: \d+\.\ds\]/);

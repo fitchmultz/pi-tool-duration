@@ -225,6 +225,33 @@ test("annotates results published after all of their concurrent timings", async 
   }
 });
 
+test("skips successful calls that would read 0.0s unless a threshold is configured", async (t) => {
+  let clock = 0;
+  t.mock.method(performance, "now", () => clock);
+  const configured = process.env.PI_TOOL_DURATION_THRESHOLD_MS;
+  delete process.env.PI_TOOL_DURATION_THRESHOLD_MS;
+  t.after(() => {
+    if (configured !== undefined) process.env.PI_TOOL_DURATION_THRESHOLD_MS = configured;
+  });
+  const sessionManager = SessionManager.inMemory();
+  sessionManager.appendMessage(assistantCalls("instant", "timed", "failed"));
+  // null reads as an absent flag; undefined would select the helper's "0" default.
+  const handlers = loadExtension(sessionManager, null);
+  for (const [toolCallId, elapsed, isError] of [["instant", 49, false], ["timed", 50, false], ["failed", 0, true]]) {
+    await handlers.get("tool_execution_start")({ toolCallId });
+    clock += elapsed;
+    await handlers.get("tool_execution_end")({ toolCallId, isError });
+    const message = { ...toolMessage(toolCallId).message, isError };
+    await handlers.get("message_end")({ message });
+    sessionManager.appendMessage(message);
+  }
+
+  const [instant, timed, failed] = modelContext(handlers, sessionManager).slice(1);
+  assert.deepEqual(texts(instant), []);
+  assert.deepEqual(texts(timed), ["[host tool-call elapsed: 0.1s]"]);
+  assert.deepEqual(texts(failed), ["[host tool-call elapsed: 0.0s]"]);
+});
+
 test("sums measured spans across a fork detach and cold resume", async (t) => {
   let clock = 0;
   t.mock.method(performance, "now", () => clock);

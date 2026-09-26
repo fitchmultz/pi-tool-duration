@@ -7,7 +7,7 @@ hi
 [host tool-call elapsed: 5.0s]
 ```
 
-Every completed tool result is annotated by default. An optional threshold limits successful-call annotations; failed calls are always annotated.
+By default, every tool result that took 50 ms or more is annotated. Faster successful calls would read `0.0s`, so they stay unannotated. Failed calls are always annotated.
 
 ## How it works
 
@@ -41,17 +41,20 @@ pi --no-extensions -e .              # try without installing
 
 ## Configure
 
-Default threshold: **0 ms**, including fast calls.
+Default threshold: **50 ms**, which skips successful calls that would read `0.0s`.
 
 ```bash
-# Restore slow/failed-only reporting:
+# Annotate every result, including instant calls:
+PI_TOOL_DURATION_THRESHOLD_MS=0 pi --no-extensions -e .
+
+# Slow/failed-only reporting:
 PI_TOOL_DURATION_THRESHOLD_MS=1000 pi --no-extensions -e .
 
 # CLI value takes precedence:
 pi --no-extensions -e . --tool-duration-threshold-ms 500
 ```
 
-Invalid CLI values fall through to the environment value; invalid environment values fall back to zero. A successful result below a configured threshold stays unchanged. Missing timing does not establish a zero-duration call.
+Invalid CLI values fall through to the environment value; invalid environment values fall back to the 50 ms default. A successful result below a configured threshold stays unchanged. Missing timing does not establish a zero-duration call.
 
 ## GPT-6 Astra
 
