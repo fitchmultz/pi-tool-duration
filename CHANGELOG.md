@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.1] - 2026-09-26
+
+### Fixed
+
+- Include the timing marker in results sent on the maintained fork's live WebSocket steering continuations, using its `live_tool_result` event. Recorded output is unchanged, and the live copy matches later requests.
+
 ## [0.4.0] - 2026-09-26
 
 ### Fixed

@@ -260,3 +260,21 @@ test("sums measured spans across a fork detach and cold resume", async (t) => {
     { toolCallId: "delegate", timestamp: 2, duration: "[host tool-call elapsed: 10.7s]" },
   ]);
 });
+
+test("returns the saved marker as model-only content for fork live continuations", async () => {
+  const sessionManager = SessionManager.inMemory();
+  sessionManager.appendMessage(assistantCalls("timed", "fast"));
+  const timed = { ...toolMessage("timed", 10).message, content: [{ type: "text", text: "live result" }] };
+  const fast = toolMessage("fast", 11).message;
+  const handlers = loadExtension(sessionManager);
+  await recordTool(handlers, sessionManager, timed);
+  await recordTool(loadExtension(sessionManager, "60000"), sessionManager, fast);
+
+  const live = await handlers.get("live_tool_result")({ message: timed });
+  assert.deepEqual(live.content.slice(0, 1), [{ type: "text", text: "live result" }]);
+  assert.match(live.content[1].text, /^\[host tool-call elapsed: \d+\.\ds\]$/);
+  assert.equal(live.content.length, 2);
+  assert.deepEqual(timed.content, [{ type: "text", text: "live result" }]);
+  assert.deepEqual(modelContext(handlers, sessionManager)[1].content, live.content, "live and replay copies match");
+  assert.equal(await handlers.get("live_tool_result")({ message: fast }), undefined);
+});

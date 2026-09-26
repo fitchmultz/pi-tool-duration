@@ -19,7 +19,7 @@ Recorded tool content, details, images, and native terminal rendering stay uncha
 
 Compaction input copies put timing before tool output so Pi's truncation preserves it in the summarizer's input. Generated summaries may omit individual timings. Native branch summaries exclude tool results. Historical markers keep their original text, and tool output resembling a marker is never removed or rewritten.
 
-Scope: built-in and extension tools that emit Pi execution events. Direct `!` / `!!` shell commands and RPC `bash` command messages are not tool results and are not annotated. On the maintained fork, a live WebSocket steering continuation delivers an async result before any request hook runs, so that first delivery has no marker; later requests include it.
+Scope: built-in and extension tools that emit Pi execution events. Direct `!` / `!!` shell commands and RPC `bash` command messages are not tool results and are not annotated. On the maintained fork, a live WebSocket steering continuation sends an async result without running context hooks; the extension supplies the same marker through `live_tool_result`, so the first delivery and later requests match. Fork builds without that event send the first delivery unmarked.
 
 ## Install
 

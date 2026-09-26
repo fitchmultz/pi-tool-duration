@@ -12,15 +12,20 @@ import type {
   SessionEntry,
 } from "@earendil-works/pi-coding-agent";
 
+type ToolResult = Extract<ContextWithSystemEvent["messages"][number], { role: "toolResult" }>;
+
+// Maintained fork only; official Pi never emits these events.
 declare module "@earendil-works/pi-coding-agent" {
   interface ExtensionAPI {
-    /**
-     * Maintained fork only: emitted instead of tool_execution_end when a native async call
-     * detaches. The same call later resumes with a new start. Official Pi never emits it.
-     */
+    /** Emitted instead of tool_execution_end when a native async call detaches; it later resumes with a new start. */
     on(
       event: "tool_execution_detached",
       handler: ExtensionHandler<{ type: "tool_execution_detached"; toolCallId: string }>,
+    ): () => void;
+    /** Supplies model-only content for a saved result sent on a live continuation, which skips context hooks. */
+    on(
+      event: "live_tool_result",
+      handler: ExtensionHandler<{ type: "live_tool_result"; message: ToolResult }, { content?: ToolResult["content"] }>,
     ): () => void;
   }
 }
@@ -187,6 +192,11 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("context_with_system", (event, ctx) => ({ messages: withDurations(event.messages, ctx) }));
+
+  pi.on("live_tool_result", ({ message }, ctx) => {
+    const [timed] = withDurations([message], ctx);
+    return timed !== message && timed?.role === "toolResult" ? { content: timed.content } : undefined;
+  });
 
   pi.on("session_before_compact", ({ preparation }, ctx) => {
     // Native summarization bypasses context hooks and truncates tool text from the end.
