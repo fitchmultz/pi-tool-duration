@@ -8,34 +8,13 @@ import type {
   ContextWithSystemEvent,
   ExtensionAPI,
   ExtensionContext,
-  ExtensionHandler,
   SessionEntry,
 } from "@earendil-works/pi-coding-agent";
 
-type ToolResult = Extract<ContextWithSystemEvent["messages"][number], { role: "toolResult" }>;
-
-// Maintained fork only; official Pi never emits these events.
-declare module "@earendil-works/pi-coding-agent" {
-  interface ExtensionAPI {
-    /** Emitted instead of tool_execution_end when a native async call detaches; it later resumes with a new start. */
-    on(
-      event: "tool_execution_detached",
-      handler: ExtensionHandler<{ type: "tool_execution_detached"; toolCallId: string }>,
-    ): () => void;
-    /** Supplies model-only content for a saved result sent on a live continuation, which skips context hooks. */
-    on(
-      event: "live_tool_result",
-      handler: ExtensionHandler<{ type: "live_tool_result"; message: ToolResult }, { content?: ToolResult["content"] }>,
-    ): () => void;
-  }
-}
-
 const DEFAULT_THRESHOLD_MS = 0;
 const TIMING_ENTRY = "pi-tool-duration";
-const DETACHED_ENTRY = "pi-tool-duration-detached";
 
 type SavedTiming = { toolCallId: string; timestamp: number; duration: string };
-type DetachedSpan = { toolCallId: string; elapsedMs: number };
 
 function parseThreshold(value: unknown): number | undefined {
   if (typeof value !== "string" && typeof value !== "number") return undefined;
@@ -71,19 +50,6 @@ function issuedCallIds(entry: SessionEntry): string[] {
     return [];
   }
   return entry.message.content.flatMap((block) => (block.type === "toolCall" ? [block.id] : []));
-}
-
-function detachedMs(ctx: ExtensionContext, toolCallId: string): number {
-  let total = 0;
-  for (const entry of ancestry(ctx)) {
-    if (entry.type === "custom" && entry.customType === DETACHED_ENTRY) {
-      const span = entry.data as DetachedSpan | undefined;
-      if (span?.toolCallId === toolCallId && typeof span.elapsedMs === "number") total += span.elapsedMs;
-    } else if (issuedCallIds(entry).includes(toolCallId)) {
-      break;
-    }
-  }
-  return total;
 }
 
 function withDurations(
@@ -156,23 +122,12 @@ export default function (pi: ExtensionAPI) {
     starts.set(event.toolCallId, performance.now());
   });
 
-  pi.on("tool_execution_detached", (event) => {
-    const startedAt = starts.get(event.toolCallId);
-    starts.delete(event.toolCallId);
-    if (startedAt === undefined) return;
-    pi.appendEntry<DetachedSpan>(DETACHED_ENTRY, {
-      toolCallId: event.toolCallId,
-      elapsedMs: performance.now() - startedAt,
-    });
-  });
-
-  pi.on("tool_execution_end", (event, ctx) => {
+  pi.on("tool_execution_end", (event) => {
     const startedAt = starts.get(event.toolCallId);
     starts.delete(event.toolCallId);
     if (startedAt === undefined) return;
 
-    // Detached waiting time is not observed, so only the measured active spans are summed.
-    const ms = performance.now() - startedAt + detachedMs(ctx, event.toolCallId);
+    const ms = performance.now() - startedAt;
     if (!event.isError && ms < thresholdMs(pi)) return;
     durations.set(event.toolCallId, `[host tool-call elapsed: ${(ms / 1000).toFixed(1)}s]`);
   });
@@ -192,11 +147,6 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("context_with_system", (event, ctx) => ({ messages: withDurations(event.messages, ctx) }));
-
-  pi.on("live_tool_result", ({ message }, ctx) => {
-    const [timed] = withDurations([message], ctx);
-    return timed !== message && timed?.role === "toolResult" ? { content: timed.content } : undefined;
-  });
 
   pi.on("session_before_compact", ({ preparation }, ctx) => {
     // Native summarization bypasses context hooks and truncates tool text from the end.
