@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Removed
+
+- Retired fork-native async detach/resume timing and live continuation event integrations. Ordinary tool timing and saved timing markers remain supported.
+
 ## [0.4.1] - 2026-09-26
 
 ### Fixed

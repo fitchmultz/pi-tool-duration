@@ -211,7 +211,7 @@ test("annotates results published after all of their concurrent timings", async 
     await handlers.get("tool_execution_start")({ toolCallId });
     await handlers.get("tool_execution_end")({ toolCallId, isError: false });
   }
-  // Native async completions persist timing A, timing B, result A, result B.
+  // Batched completions can persist timing A, timing B, result A, result B.
   await handlers.get("message_end")({ message: fast });
   await handlers.get("message_end")({ message: slow });
   sessionManager.appendMessage(fast);
@@ -223,58 +223,4 @@ test("annotates results published after all of their concurrent timings", async 
     assert.equal(result.content.length, 1);
     assert.match(texts(result)[0], /^\[host tool-call elapsed: \d+\.\ds\]$/);
   }
-});
-
-test("sums measured spans across a fork detach and cold resume", async (t) => {
-  let clock = 0;
-  t.mock.method(performance, "now", () => clock);
-  const entries = [];
-  const append = (entry) => entries.push({ id: String(entries.length + 1), parentId: entries.at(-1)?.id ?? null, ...entry });
-  const journal = {
-    appendCustomEntry: (customType, data) => append({ type: "custom", customType, data }),
-    getLeafId: () => entries.at(-1)?.id ?? null,
-    getEntry: (id) => entries[Number(id) - 1],
-  };
-  const issued = assistantCalls("delegate");
-  append({ type: "message", message: issued });
-
-  const before = loadExtension(journal, "500");
-  await before.get("tool_execution_start")({ toolCallId: "delegate" });
-  clock += 10_622;
-  await before.get("tool_execution_detached")({ toolCallId: "delegate" });
-  await before.get("agent_end")();
-  append({ type: "message", message: { role: "user", content: "continue", timestamp: 1 } });
-  // The fork snapshots the call again when it resumes; only the original message bounds the lookup.
-  append({ type: "message", checkpoint: true, message: issued });
-
-  const after = loadExtension(journal, "500");
-  await after.get("session_start")();
-  clock += 5_000;
-  await after.get("tool_execution_start")({ toolCallId: "delegate" });
-  clock += 76;
-  await after.get("tool_execution_end")({ toolCallId: "delegate", isError: false });
-  await after.get("message_end")(toolMessage("delegate", 2));
-
-  assert.deepEqual(entries.filter((entry) => entry.type === "custom").map((entry) => entry.data), [
-    { toolCallId: "delegate", elapsedMs: 10_622 },
-    { toolCallId: "delegate", timestamp: 2, duration: "[host tool-call elapsed: 10.7s]" },
-  ]);
-});
-
-test("returns the saved marker as model-only content for fork live continuations", async () => {
-  const sessionManager = SessionManager.inMemory();
-  sessionManager.appendMessage(assistantCalls("timed", "fast"));
-  const timed = { ...toolMessage("timed", 10).message, content: [{ type: "text", text: "live result" }] };
-  const fast = toolMessage("fast", 11).message;
-  const handlers = loadExtension(sessionManager);
-  await recordTool(handlers, sessionManager, timed);
-  await recordTool(loadExtension(sessionManager, "60000"), sessionManager, fast);
-
-  const live = await handlers.get("live_tool_result")({ message: timed });
-  assert.deepEqual(live.content.slice(0, 1), [{ type: "text", text: "live result" }]);
-  assert.match(live.content[1].text, /^\[host tool-call elapsed: \d+\.\ds\]$/);
-  assert.equal(live.content.length, 2);
-  assert.deepEqual(timed.content, [{ type: "text", text: "live result" }]);
-  assert.deepEqual(modelContext(handlers, sessionManager)[1].content, live.content, "live and replay copies match");
-  assert.equal(await handlers.get("live_tool_result")({ message: fast }), undefined);
 });

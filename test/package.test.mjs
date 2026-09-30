@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -24,6 +24,7 @@ test("uses the host-provided Pi peer without bundling a private runtime", async 
 test("loads the installed npm package through Pi", async () => {
   const root = mkdtempSync(join(tmpdir(), "pi-tool-duration-package-"));
   try {
+    writeFileSync(join(root, "package.json"), JSON.stringify({ private: true }));
     const source = fileURLToPath(new URL("..", import.meta.url));
     const result = JSON.parse(execFileSync("npm", ["pack", "--json", "--pack-destination", root], {
       cwd: source, encoding: "utf8",
