@@ -1,10 +1,16 @@
 # Changelog
 
-## [0.5.0] - 2026-09-26
+## [Unreleased]
+
+## [0.5.0] - 2026-10-01
 
 ### Changed
 
 - Leave successful calls under 50 ms unannotated by default; their marker would read `0.0s`. Failed calls are still always annotated. Set `PI_TOOL_DURATION_THRESHOLD_MS=0` to annotate every result again.
+
+### Removed
+
+- Retired fork-native async detach/resume timing and live continuation event integrations. Ordinary tool timing and saved timing markers remain supported.
 
 ## [0.4.1] - 2026-09-26
 

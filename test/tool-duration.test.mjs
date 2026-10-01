@@ -211,7 +211,7 @@ test("annotates results published after all of their concurrent timings", async 
     await handlers.get("tool_execution_start")({ toolCallId });
     await handlers.get("tool_execution_end")({ toolCallId, isError: false });
   }
-  // Native async completions persist timing A, timing B, result A, result B.
+  // Batched completions can persist timing A, timing B, result A, result B.
   await handlers.get("message_end")({ message: fast });
   await handlers.get("message_end")({ message: slow });
   sessionManager.appendMessage(fast);
@@ -225,83 +225,36 @@ test("annotates results published after all of their concurrent timings", async 
   }
 });
 
-test("skips successful calls that would read 0.0s unless a threshold is configured", async (t) => {
+test("skips zero-rounded successes by default while preserving failures and threshold overrides", async (t) => {
   let clock = 0;
   t.mock.method(performance, "now", () => clock);
   const configured = process.env.PI_TOOL_DURATION_THRESHOLD_MS;
-  delete process.env.PI_TOOL_DURATION_THRESHOLD_MS;
   t.after(() => {
-    if (configured !== undefined) process.env.PI_TOOL_DURATION_THRESHOLD_MS = configured;
+    if (configured === undefined) delete process.env.PI_TOOL_DURATION_THRESHOLD_MS;
+    else process.env.PI_TOOL_DURATION_THRESHOLD_MS = configured;
   });
-  const sessionManager = SessionManager.inMemory();
-  sessionManager.appendMessage(assistantCalls("instant", "timed", "failed"));
-  // null reads as an absent flag; undefined would select the helper's "0" default.
-  const handlers = loadExtension(sessionManager, null);
-  for (const [toolCallId, elapsed, isError] of [["instant", 49, false], ["timed", 50, false], ["failed", 0, true]]) {
-    await handlers.get("tool_execution_start")({ toolCallId });
+
+  for (const [flag, env, elapsed, isError, expected] of [
+    [null, undefined, 49, false, []],
+    [null, undefined, 50, false, ["[host tool-call elapsed: 0.1s]"]],
+    [null, undefined, 0, true, ["[host tool-call elapsed: 0.0s]"]],
+    [null, "0", 0, false, ["[host tool-call elapsed: 0.0s]"]],
+    ["0", "60000", 0, false, ["[host tool-call elapsed: 0.0s]"]],
+    ["invalid", "0", 0, false, ["[host tool-call elapsed: 0.0s]"]],
+    ["invalid", "invalid", 49, false, []],
+  ]) {
+    if (env === undefined) delete process.env.PI_TOOL_DURATION_THRESHOLD_MS;
+    else process.env.PI_TOOL_DURATION_THRESHOLD_MS = env;
+    const sessionManager = SessionManager.inMemory();
+    sessionManager.appendMessage(assistantCalls("call"));
+    const handlers = loadExtension(sessionManager, flag);
+    await handlers.get("tool_execution_start")({ toolCallId: "call" });
     clock += elapsed;
-    await handlers.get("tool_execution_end")({ toolCallId, isError });
-    const message = { ...toolMessage(toolCallId).message, isError };
+    await handlers.get("tool_execution_end")({ toolCallId: "call", isError });
+    const message = { ...toolMessage("call").message, isError };
     await handlers.get("message_end")({ message });
     sessionManager.appendMessage(message);
+    assert.deepEqual(texts(modelContext(handlers, sessionManager)[1]), expected,
+      JSON.stringify({ flag, env, elapsed, isError }));
   }
-
-  const [instant, timed, failed] = modelContext(handlers, sessionManager).slice(1);
-  assert.deepEqual(texts(instant), []);
-  assert.deepEqual(texts(timed), ["[host tool-call elapsed: 0.1s]"]);
-  assert.deepEqual(texts(failed), ["[host tool-call elapsed: 0.0s]"]);
-});
-
-test("sums measured spans across a fork detach and cold resume", async (t) => {
-  let clock = 0;
-  t.mock.method(performance, "now", () => clock);
-  const entries = [];
-  const append = (entry) => entries.push({ id: String(entries.length + 1), parentId: entries.at(-1)?.id ?? null, ...entry });
-  const journal = {
-    appendCustomEntry: (customType, data) => append({ type: "custom", customType, data }),
-    getLeafId: () => entries.at(-1)?.id ?? null,
-    getEntry: (id) => entries[Number(id) - 1],
-  };
-  const issued = assistantCalls("delegate");
-  append({ type: "message", message: issued });
-
-  const before = loadExtension(journal, "500");
-  await before.get("tool_execution_start")({ toolCallId: "delegate" });
-  clock += 10_622;
-  await before.get("tool_execution_detached")({ toolCallId: "delegate" });
-  await before.get("agent_end")();
-  append({ type: "message", message: { role: "user", content: "continue", timestamp: 1 } });
-  // The fork snapshots the call again when it resumes; only the original message bounds the lookup.
-  append({ type: "message", checkpoint: true, message: issued });
-
-  const after = loadExtension(journal, "500");
-  await after.get("session_start")();
-  clock += 5_000;
-  await after.get("tool_execution_start")({ toolCallId: "delegate" });
-  clock += 76;
-  await after.get("tool_execution_end")({ toolCallId: "delegate", isError: false });
-  await after.get("message_end")(toolMessage("delegate", 2));
-
-  assert.deepEqual(entries.filter((entry) => entry.type === "custom").map((entry) => entry.data), [
-    { toolCallId: "delegate", elapsedMs: 10_622 },
-    { toolCallId: "delegate", timestamp: 2, duration: "[host tool-call elapsed: 10.7s]" },
-  ]);
-});
-
-test("returns the saved marker as model-only content for fork live continuations", async () => {
-  const sessionManager = SessionManager.inMemory();
-  sessionManager.appendMessage(assistantCalls("timed", "fast"));
-  const timed = { ...toolMessage("timed", 10).message, content: [{ type: "text", text: "live result" }] };
-  const fast = toolMessage("fast", 11).message;
-  const handlers = loadExtension(sessionManager);
-  await recordTool(handlers, sessionManager, timed);
-  await recordTool(loadExtension(sessionManager, "60000"), sessionManager, fast);
-
-  const live = await handlers.get("live_tool_result")({ message: timed });
-  assert.deepEqual(live.content.slice(0, 1), [{ type: "text", text: "live result" }]);
-  assert.match(live.content[1].text, /^\[host tool-call elapsed: \d+\.\ds\]$/);
-  assert.equal(live.content.length, 2);
-  assert.deepEqual(timed.content, [{ type: "text", text: "live result" }]);
-  assert.deepEqual(modelContext(handlers, sessionManager)[1].content, live.content, "live and replay copies match");
-  assert.equal(await handlers.get("live_tool_result")({ message: fast }), undefined);
 });
