@@ -270,6 +270,44 @@ test("annotates results published after all of their concurrent timings", async 
   }
 });
 
+test("same call ID and finalized timestamp retain separate occurrence timing", () => {
+  for (const distinctContent of [false, true]) {
+    const sm = SessionManager.inMemory();
+    const first = { ...toolMessage("reused", 1).message, content: [{ type: "text", text: "first" }] };
+    const second = { ...first, content: [{ type: "text", text: distinctContent ? "second" : "first" }] };
+    sm.appendMessage(assistantCalls("reused"));
+    sm.appendCustomEntry("pi-tool-duration", { toolCallId: "reused", timestamp: 2, duration: "[duration: 1.5s]" });
+    const checkpointCopy = sm.appendMessage(assistantCalls("reused"));
+    sm.getEntry(checkpointCopy).checkpoint = true; // Saved 0.99 fork journals repeat assistant calls in these entries.
+    sm.appendMessage(first);
+    sm.appendMessage(assistantCalls("reused"));
+    sm.appendMessage(second);
+    const handlers = loadExtension(sm);
+    const context = messages => handlers.get("context_with_system")({ messages }, { sessionManager: sm }).messages;
+    const expectedFirst = { ...first, content: [...first.content, { type: "text", text: "[duration: 1.5s]" }] };
+    assert.deepEqual(context([first, second]), [expectedFirst, second]);
+    assert.deepEqual(context([first, second]), [expectedFirst, second], "warmed ordering must be identical");
+    const preparation = { messagesToSummarize: [first], turnPrefixMessages: [second] };
+    handlers.get("session_before_compact")({ preparation }, { sessionManager: sm });
+    assert.deepEqual(texts(preparation.messagesToSummarize[0]), ["[duration: 1.5s]", "first"]);
+    assert.deepEqual(preparation.turnPrefixMessages, [second]);
+    if (distinctContent) {
+      assert.deepEqual(context([first]), [expectedFirst], "filtered distinct content retains occurrence identity");
+      assert.deepEqual(context([second]), [second]);
+    }
+  }
+});
+
+test("text-only compaction does no timing history work, even on a cold long branch", () => {
+  const handlers = loadExtension();
+  const preparation = { messagesToSummarize: [{ role: "user", content: "text", timestamp: 1 }], turnPrefixMessages: [] };
+  const before = structuredClone(preparation);
+  handlers.get("session_before_compact")({ preparation }, {
+    sessionManager: { getLeafId() { assert.fail("no lookup needed"); }, getEntry() { assert.fail("no ancestry work"); } },
+  });
+  assert.deepEqual(preparation, before);
+});
+
 test("skips zero-rounded successes by default while preserving failures and threshold overrides", async (t) => {
   let clock = 0;
   t.mock.method(performance, "now", () => clock);

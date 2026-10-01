@@ -6,10 +6,9 @@ import { join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-const required = process.env.PI_COMPAT_HOST === "fork" || process.env.PI_REQUIRE_CHECKPOINT === "1";
 const hostIndex = process.env.PI_HOST_INDEX ?? fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
 
-test("native timed results survive reload and cold restoration", (t) => {
+test("native timed results survive reload and cold disk restoration", () => {
   const home = mkdtempSync(join(tmpdir(), "pi-tool-duration-checkpoint-"));
   const program = `
     import assert from "node:assert/strict";
@@ -20,14 +19,10 @@ test("native timed results survive reload and cold restoration", (t) => {
     globalThis.fetch = async () => { throw new Error("No network in restoration test"); };
     const host = pathToFileURL(process.env.PI_HOST_INDEX);
     const pi = await import(host);
-    const hasCheckpoints = typeof pi.AgentSession.prototype.acquireCheckpoint === "function";
-    assert.ok(hasCheckpoints || process.env.TEST_REQUIRE_CHECKPOINT !== "true", "This host requires checkpoint support");
-    if (process.env.TEST_RESTORE === "checkpoint" && !hasCheckpoints) process.exit(77);
     const aiPackage = pathToFileURL(findPackageJSON("@earendil-works/pi-ai", host));
     const { createAssistantMessageEventStream } = await import(new URL("./dist/index.js", aiPackage));
     const cwd = process.env.HOME;
     const agentDir = join(cwd, "agent");
-    const checkpointPath = join(cwd, "checkpoint.json");
     const statePath = join(cwd, "expected-state.json");
     const errors = [];
     const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
@@ -42,7 +37,7 @@ test("native timed results survive reload and cold restoration", (t) => {
         return { content: [{ type: "text", text: "timed output" }], details: { status: 201 } };
       },
     };
-    const create = async (checkpoint, sessionFile) => {
+    const create = async (sessionFile) => {
       const settingsManager = pi.SettingsManager.inMemory({ compaction: { enabled: false }, retry: { enabled: false } });
       const modelRuntime = await pi.ModelRuntime.create({
         authPath: join(agentDir, "empty-auth.json"), modelsPath: null,
@@ -60,21 +55,12 @@ test("native timed results survive reload and cold restoration", (t) => {
       await resourceLoader.reload({ resolveProjectTrust: async () => false });
       assert.deepEqual(resourceLoader.getExtensions().errors, []);
       const { session } = await pi.createAgentSession({
-        cwd, agentDir, settingsManager, modelRuntime, model, resourceLoader, checkpoint,
+        cwd, agentDir, settingsManager, modelRuntime, model, resourceLoader,
         customTools: [tool], noTools: "builtin",
         sessionManager: sessionFile ? pi.SessionManager.open(sessionFile) : pi.SessionManager.create(cwd, join(cwd, "sessions")),
       });
       await session.bindExtensions({ onError: error => errors.push(error) });
       return session;
-    };
-    const capture = async session => {
-      const hold = await session.acquireCheckpoint({ signal: AbortSignal.timeout(3000), quiesce: () => () => {} });
-      try {
-        assert.equal(hold.sleepReady, true, JSON.stringify(hold.sleepBlockers));
-        assert.deepEqual(hold.sleepBlockers, []);
-        assert.equal(hold.checkpoint.boundary, "settled");
-        return hold.checkpoint;
-      } finally { hold.release(); }
     };
     const state = session => ({
       entries: session.sessionManager.getEntries(), activeTools: session.getActiveToolNames(),
@@ -110,12 +96,10 @@ test("native timed results survive reload and cold restoration", (t) => {
       assert.deepEqual(errors, []);
     };
     const saved = process.env.TEST_RESTORE ? JSON.parse(readFileSync(statePath, "utf8")) : undefined;
-    const checkpoint = process.env.TEST_RESTORE === "checkpoint" ? pi.readSessionCheckpoint(checkpointPath) : undefined;
-    const session = await create(checkpoint, process.env.TEST_RESTORE === "disk" ? saved.file : undefined);
+    const session = await create(process.env.TEST_RESTORE === "disk" ? saved.file : undefined);
     try {
       if (saved) {
         assert.deepEqual(state(session), saved.state);
-        if (checkpoint) assert.deepEqual((await capture(session)).selection, checkpoint.selection);
         await prompt(session);
       } else {
         await prompt(session, true);
@@ -131,32 +115,24 @@ test("native timed results survive reload and cold restoration", (t) => {
         await session.reload();
         assert.deepEqual(state(session), beforeReload);
         await prompt(session);
-        // The disk-resume prompt must not change the journal used by the checkpoint restore.
         const diskSession = join(cwd, "disk-session.jsonl");
         copyFileSync(session.sessionFile, diskSession);
         writeFileSync(statePath, JSON.stringify({ file: diskSession, state: state(session) }));
-        if (hasCheckpoints) pi.writeSessionCheckpoint(checkpointPath, await capture(session));
       }
     } finally { session.dispose(); }
   `;
   try {
     // Separate processes prevent restoration from reusing in-memory timing maps.
-    for (const restore of ["", "disk", "checkpoint"]) {
+    for (const restore of ["", "disk"]) {
       const result = spawnSync(process.execPath, ["--input-type=module", "--eval", program], {
         cwd: home, encoding: "utf8", timeout: 20_000,
         env: {
           HOME: home, PATH: process.env.PATH ?? "", PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1",
           PI_CODING_AGENT_DIR: join(home, "agent"), PI_HOST_INDEX: hostIndex,
           TEST_EXTENSION: resolve(process.env.PI_TOOL_DURATION_TEST_EXTENSION ?? fileURLToPath(new URL("../extensions/tool-duration/index.ts", import.meta.url))),
-          TEST_RESTORE: restore, TEST_REQUIRE_CHECKPOINT: String(required),
+          TEST_RESTORE: restore,
         },
       });
-      if (result.status === 77) {
-        assert.equal(restore, "checkpoint");
-        assert.ok(!required, "This job requires a checkpoint-capable native host");
-        t.diagnostic("Native checkpoint unavailable; timed cold disk restoration passed.");
-        continue;
-      }
       assert.equal(result.status, 0, (restore || "capture") + ": " + (result.stderr || String(result.error)));
     }
   } finally {

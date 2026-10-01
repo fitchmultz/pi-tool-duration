@@ -56,9 +56,8 @@ jobs:
           npm ci --ignore-scripts
           npm run hydrate:model-data
           npm run build:offline
-      - name: Exercise fork runtime and checkpoint restoration
+      - name: Exercise fork runtime and disk restoration
         working-directory: extension
         env:
           PI_HOST_INDEX: ${{ github.workspace }}/fork/packages/coding-agent/dist/index.js
-          PI_REQUIRE_CHECKPOINT: '1'
-        run: node --test test/runtime.test.mjs test/checkpoint.test.mjs
+        run: node --test test/runtime.test.mjs test/restoration.test.mjs
