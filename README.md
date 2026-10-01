@@ -76,7 +76,7 @@ The model receives the output plus a host timing marker. Pi's terminal retains i
 
 ## Development
 
-Run `npm ci --ignore-scripts` and `npm run check` on Node.js 24 for typechecking, unit/native runtime tests, and an installed npm package smoke test. There is no production build or `prepare` step. The development host is pinned to official `0.99.1`; CI tests the current stable official release and current maintained fork on pull requests and weekly. The host-provided Pi peer stays wildcard and optional rather than bundling a runtime. The lockfile resolves every package from the public npm registry.
+Run `npm ci --ignore-scripts` and `npm run check` on Node.js 24 for typechecking, unit/native runtime tests, and an installed npm package smoke test. There is no production build or `prepare` step. The development host is pinned to official `0.99.2`; CI tests the current stable official release and current maintained fork on pull requests and weekly. The host-provided Pi peer stays wildcard and optional rather than bundling a runtime. The lockfile resolves every package from the public npm registry.
 
 Runtime tests use the installed host's manifest `bin.pi` entry and a local scripted Responses provider in an isolated HOME. `PI_HOST_CLI`, `PI_COMPAT_EXPECTED_VERSION`, and `PI_COMPAT_EXPECTED_PACKAGE_DIR` can assert the selected graph.
 
