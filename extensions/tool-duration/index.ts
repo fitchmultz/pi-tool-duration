@@ -11,7 +11,8 @@ import type {
   SessionEntry,
 } from "@earendil-works/pi-coding-agent";
 
-const DEFAULT_THRESHOLD_MS = 0;
+// Successful calls under 50 ms would read "0.0s" at tenth-of-a-second precision.
+const DEFAULT_THRESHOLD_MS = 50;
 const TIMING_ENTRY = "pi-tool-duration";
 
 type SavedTiming = { toolCallId: string; timestamp: number; duration: string };
@@ -114,7 +115,7 @@ export default function (pi: ExtensionAPI) {
 
   pi.registerFlag("tool-duration-threshold-ms", {
     // Pi's help formatter adds no separator once this long flag exceeds its 30-column width.
-    description: " Minimum elapsed milliseconds before appending a model-visible duration",
+    description: " Minimum elapsed milliseconds before appending a model-visible duration (default 50)",
     type: "string",
   });
 

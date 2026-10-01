@@ -224,3 +224,37 @@ test("annotates results published after all of their concurrent timings", async 
     assert.match(texts(result)[0], /^\[host tool-call elapsed: \d+\.\ds\]$/);
   }
 });
+
+test("skips zero-rounded successes by default while preserving failures and threshold overrides", async (t) => {
+  let clock = 0;
+  t.mock.method(performance, "now", () => clock);
+  const configured = process.env.PI_TOOL_DURATION_THRESHOLD_MS;
+  t.after(() => {
+    if (configured === undefined) delete process.env.PI_TOOL_DURATION_THRESHOLD_MS;
+    else process.env.PI_TOOL_DURATION_THRESHOLD_MS = configured;
+  });
+
+  for (const [flag, env, elapsed, isError, expected] of [
+    [null, undefined, 49, false, []],
+    [null, undefined, 50, false, ["[host tool-call elapsed: 0.1s]"]],
+    [null, undefined, 0, true, ["[host tool-call elapsed: 0.0s]"]],
+    [null, "0", 0, false, ["[host tool-call elapsed: 0.0s]"]],
+    ["0", "60000", 0, false, ["[host tool-call elapsed: 0.0s]"]],
+    ["invalid", "0", 0, false, ["[host tool-call elapsed: 0.0s]"]],
+    ["invalid", "invalid", 49, false, []],
+  ]) {
+    if (env === undefined) delete process.env.PI_TOOL_DURATION_THRESHOLD_MS;
+    else process.env.PI_TOOL_DURATION_THRESHOLD_MS = env;
+    const sessionManager = SessionManager.inMemory();
+    sessionManager.appendMessage(assistantCalls("call"));
+    const handlers = loadExtension(sessionManager, flag);
+    await handlers.get("tool_execution_start")({ toolCallId: "call" });
+    clock += elapsed;
+    await handlers.get("tool_execution_end")({ toolCallId: "call", isError });
+    const message = { ...toolMessage("call").message, isError };
+    await handlers.get("message_end")({ message });
+    sessionManager.appendMessage(message);
+    assert.deepEqual(texts(modelContext(handlers, sessionManager)[1]), expected,
+      JSON.stringify({ flag, env, elapsed, isError }));
+  }
+});
