@@ -15,7 +15,7 @@ The extension measures from Pi's `tool_execution_start` through `tool_execution_
 
 The measurement includes preflight and result processing. In a parallel batch, it can include time spent preparing later siblings, but stops when this call finishes even if another call continues. For a tool that launches a background job, it measures the launch call. Parallel durations are not additive task elapsed time.
 
-Recorded tool content, details, images, and native terminal rendering stay unchanged. Timings survive reload, resume, forks, branch navigation, and retained compaction history. Request-time lookup walks backward only as far as the assistant messages that issued the visible results; older or unidentifiable results can require a longer walk.
+Recorded tool content, details, images, and native terminal rendering stay unchanged. Timings survive reload, resume, forks, branch navigation, and retained compaction history. The first timing lookup on a branch replays its ancestry once, including legacy records before compaction. Subsequent requests reuse occurrence-specific timing or known-absent answers and process only new entries. Unknown/orphan results do not repeat full-history walks. Navigation or session replacement rebuilds the selected branch; no history cap discards timing.
 
 Compaction input copies put timing before tool output so Pi's truncation preserves it in the summarizer's input. Generated summaries may omit individual timings. Native branch summaries exclude tool results. Historical markers keep their original text, and tool output resembling a marker is never removed or rewritten.
 
@@ -23,7 +23,7 @@ Scope: built-in and extension tools that emit Pi execution events. Direct `!` / 
 
 ## Install
 
-Requires Pi **0.87.0 or later** on Node.js **24 or later**. Tested against official Pi and the maintained `fitchmultz/pi` fork.
+Requires Pi **1.0.0 or later** on Node.js **24 or later**. Tested against official Pi and the maintained `fitchmultz/pi` fork.
 
 ```bash
 pi install npm:pi-tool-duration
@@ -76,7 +76,9 @@ The model receives the output plus a host timing marker. Pi's terminal retains i
 
 ## Development
 
-Run `npm ci --ignore-scripts` and `npm run check` on Node.js 24 for typechecking, unit/native runtime tests, and an installed npm package smoke test. There is no production build or `prepare` step. The development host is pinned to official `0.99.2`; CI tests the current stable official release and current maintained fork on pull requests and weekly. The host-provided Pi peer stays wildcard and optional rather than bundling a runtime. The lockfile resolves every package from the public npm registry.
+Run `npm ci --ignore-scripts` and `npm run check` on Node.js 24 for typechecking, unit/native runtime tests, and an installed npm package smoke test. There is no production build or `prepare` step. The development host is pinned to official `1.0.0` (eight-package Pi cohort, TypeBox `1.3.27`); CI tests the current stable official release and current maintained fork on pull requests and weekly. The host-provided Pi peer stays wildcard and optional rather than bundling a runtime. The lockfile resolves every package from the public npm registry.
+
+The lookup reconciles at the next read, after native message finalization and boundary drafts have committed. It does not register an extra `turn_end` handler merely to read IDs: official Pi eagerly builds full-branch boundary previews for those handlers, while the append suffix already provides finalized occurrence IDs and timestamps. Optional reverse branch metadata avoids archived-body decoding on capable forks; official parent lookups provide the complete fallback.
 
 Runtime tests use the installed host's manifest `bin.pi` entry and a local scripted Responses provider in an isolated HOME. `PI_HOST_CLI`, `PI_COMPAT_EXPECTED_VERSION`, and `PI_COMPAT_EXPECTED_PACKAGE_DIR` can assert the selected graph.
 

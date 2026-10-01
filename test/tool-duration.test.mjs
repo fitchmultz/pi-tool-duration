@@ -79,7 +79,7 @@ test("associates legacy timing with the finalized result timestamp", () => {
   assert.deepEqual(message.content, [{ type: "text", text: "original" }]);
 });
 
-test("looks up only recent ancestry and skips history when there are no tool results", () => {
+test("indexes a branch once, including known-absent results, and skips history without results", () => {
   const sessionManager = SessionManager.inMemory();
   for (let i = 0; i < 1000; i++) {
     sessionManager.appendMessage({ role: "user", content: "archived", timestamp: i });
@@ -103,14 +103,59 @@ test("looks up only recent ancestry and skips history when there are no tool res
   const context = handlers.get("context_with_system") ?? handlers.get("context");
   const result = context({ messages: structuredClone([timed, fast]) }, { sessionManager: manager });
   assert.deepEqual(result.messages.map(texts), [["[duration: 1.5s]"], []]);
-  assert.equal(reads, 5, "Lookup stops at the assistant message that issued the calls");
+  assert.ok(reads > 0 && reads <= 1006, "Cold replay is at most one ancestry pass plus selected timing data");
 
   reads = 0;
   context({ messages: [structuredClone(fast)] }, { sessionManager: manager });
-  assert.equal(reads, 5, "An untimed result stops at its issuing assistant message");
+  assert.equal(reads, 0, "An untimed result is a cached occurrence, not another ancestry join");
   reads = 0;
   context({ messages: [] }, { sessionManager: manager });
   assert.equal(reads, 0);
+});
+
+test("warmed orphan requests are history-independent and append/navigation reconcile occurrences", () => {
+  for (const size of [10, 43000]) {
+    const sm = SessionManager.inMemory();
+    for (let i = 0; i < size; i++) sm.appendMessage({ role: "user", content: "archived", timestamp: i });
+    const anchor = sm.getLeafId();
+    const orphan = toolMessage("reused", size + 1).message;
+    sm.appendMessage(orphan);
+    let reads = 0;
+    const manager = {
+      getLeafId: () => sm.getLeafId(),
+      getEntry(id) { reads++; return sm.getEntry(id); },
+      getBranch() { assert.fail("no full-branch copies"); },
+      getEntries() { assert.fail("no full-journal copies"); },
+    };
+    const handlers = loadExtension(sm);
+    const context = messages => handlers.get("context_with_system")({ messages }, { sessionManager: manager }).messages;
+    assert.deepEqual(context([orphan]), [orphan]);
+    assert.equal(reads, size + 1);
+    for (let i = 0; i < 3; i++) {
+      reads = 0;
+      assert.deepEqual(context([orphan, toolMessage("unknown", -1).message]), [orphan, toolMessage("unknown", -1).message]);
+      assert.equal(reads, 0, "both known absence and unknown payloads are warmed");
+    }
+    sm.appendMessage(assistantCalls("reused"));
+    sm.appendCustomEntry("pi-tool-duration", { toolCallId: "reused", timestamp: 0, duration: "[duration: 2.0s]" });
+    const timed = toolMessage("reused", size + 2).message;
+    sm.appendMessage(timed);
+    reads = 0;
+    assert.deepEqual(context([orphan, timed]).map(texts), [[], ["[duration: 2.0s]"]]);
+    assert.equal(reads, 4, "only the appended suffix plus selected timing data");
+    sm.appendCompaction("summary", null, 100);
+    reads = 0;
+    const preparation = { messagesToSummarize: [timed], turnPrefixMessages: [orphan, timed] };
+    handlers.get("session_before_compact")({ preparation }, { sessionManager: manager });
+    assert.equal(reads, 1, "one suffix lookup for both compaction arrays");
+    assert.deepEqual(preparation.messagesToSummarize.map(texts), [["[duration: 2.0s]"]]);
+    assert.deepEqual(preparation.turnPrefixMessages.map(texts), [[], ["[duration: 2.0s]"]]);
+    sm.branch(anchor);
+    sm.appendMessage(timed); // Identical ID/timestamp on another branch, without timing.
+    assert.deepEqual(context([timed]), [timed], "sibling occurrence cannot inherit timing");
+    handlers.get("session_tree")();
+    assert.deepEqual(context([timed]), [timed]);
+  }
 });
 
 test("clears pending timings on startup and agent completion", async () => {

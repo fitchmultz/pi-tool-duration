@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Require Pi 1.0.0; qualify against the exact official 1.0.0 cohort and host TypeBox 1.3.27.
+- Cache timing and known absence per finalized result occurrence on the selected branch. Cold legacy recovery remains complete; warmed orphan requests no longer rewalk history, and appends process only their suffix.
+- Share one lookup for both compaction input arrays. Use reverse branch metadata when available without requiring fork-only APIs.
+
 ## [0.5.0] - 2026-10-01
 
 ### Changed
