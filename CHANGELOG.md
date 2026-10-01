@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-01
+
 ### Changed
 
 - Require Pi 1.0.0; qualify against the exact official 1.0.0 cohort and host TypeBox 1.3.27.
