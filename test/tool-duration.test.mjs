@@ -296,6 +296,23 @@ test("same call ID and finalized timestamp retain separate occurrence timing", (
       assert.deepEqual(context([second]), [second]);
     }
   }
+  const sm = SessionManager.inMemory();
+  const messages = ["A", "A", "B"].map((text, index) => {
+    sm.appendMessage(assistantCalls("same"));
+    sm.appendCustomEntry("pi-tool-duration", { toolCallId: "same", timestamp: index, duration: `[duration: ${index + 1}.5s]` });
+    const message = { ...toolMessage("same", 1).message, content: [{ type: "text", text }] };
+    sm.appendMessage(message);
+    return message;
+  });
+  const handlers = loadExtension(sm);
+  const filtered = messages.slice(0, 2);
+  const context = handlers.get("context_with_system")({ messages: filtered }, { sessionManager: sm }).messages;
+  assert.deepEqual(context.map(texts), [["A", "[duration: 1.5s]"], ["A", "[duration: 2.5s]"]],
+    "filtering a distinguishable later occurrence cannot reverse the matching queue");
+  const preparation = { messagesToSummarize: [filtered[0]], turnPrefixMessages: [filtered[1]] };
+  handlers.get("session_before_compact")({ preparation }, { sessionManager: sm });
+  assert.deepEqual(preparation.messagesToSummarize.map(texts), [["[duration: 1.5s]", "A"]]);
+  assert.deepEqual(preparation.turnPrefixMessages.map(texts), [["[duration: 2.5s]", "A"]]);
 });
 
 test("text-only compaction does no timing history work, even on a cold long branch", () => {

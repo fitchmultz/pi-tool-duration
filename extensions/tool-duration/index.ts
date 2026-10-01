@@ -128,7 +128,7 @@ function timingLookup() {
       remaining.set(key, (remaining.get(key) ?? 0) + 1);
     }
     const used = new Set<string>();
-    return messages.map(message => {
+    return messages.map((message, index) => {
       if (message.role !== "toolResult") return message;
       const key = timingKey(message);
       const occurrences = saved.get(key);
@@ -142,7 +142,16 @@ function timingLookup() {
         });
         // ponytail: request copies omit entry IDs; indistinguishable filtered copies
         // align to newest retained occurrences until Pi exposes request occurrence IDs.
-        occurrence = matches.length === 1 ? matches[0] : available[Math.max(0, available.length - (remaining.get(key) ?? 0))];
+        const candidates = matches.length ? matches : available;
+        let copiesRemaining = remaining.get(key) ?? 0;
+        if (matches.length) {
+          copiesRemaining = 0;
+          for (let i = index; i < messages.length; i++) {
+            const copy = messages[i];
+            if (copy?.role === "toolResult" && timingKey(copy) === key && isDeepStrictEqual(copy.content, message.content)) copiesRemaining++;
+          }
+        }
+        occurrence = candidates[Math.max(0, candidates.length - copiesRemaining)];
       }
       if (occurrence) used.add(occurrence.entryId);
       remaining.set(key, (remaining.get(key) ?? 1) - 1);
