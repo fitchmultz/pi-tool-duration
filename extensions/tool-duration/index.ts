@@ -4,11 +4,11 @@
  * Adds host-observed tool-call timing to model-request copies without
  * changing recorded tool output or Pi's native terminal rendering.
  */
+import { isDeepStrictEqual } from "node:util";
 import type {
   ContextWithSystemEvent,
   ExtensionAPI,
   ExtensionContext,
-  SessionEntry,
 } from "@earendil-works/pi-coding-agent";
 
 // Successful calls under 50 ms would read "0.0s" at tenth-of-a-second precision.
@@ -36,80 +36,136 @@ function timingKey(message: { timestamp: number; toolCallId: string }): string {
   return `${message.timestamp}:${message.toolCallId}`;
 }
 
-function* ancestry(ctx: ExtensionContext): Generator<SessionEntry> {
-  for (let id = ctx.sessionManager.getLeafId(); id;) {
-    const entry = ctx.sessionManager.getEntry(id);
-    if (!entry) return;
-    id = entry.parentId;
-    yield entry;
-  }
-}
+// Retain only small join facts, never tool output or assistant signatures.
+type TimingFact = {
+  id: string;
+  parentId: string | null;
+  type: string;
+  customType?: string;
+  checkpoint?: boolean;
+  message?: { role: string; timestamp?: number; toolCallId?: string; toolCalls?: readonly { id: string }[] };
+};
 
-/** Call IDs issued by an original assistant message; the fork's checkpoint snapshots repeat them. */
-function issuedCallIds(entry: SessionEntry): string[] {
-  if (entry.type !== "message" || entry.message.role !== "assistant" || ("checkpoint" in entry && entry.checkpoint)) {
-    return [];
-  }
-  return entry.message.content.flatMap((block) => (block.type === "toolCall" ? [block.id] : []));
-}
-
-function withDurations(
-  messages: ContextWithSystemEvent["messages"],
-  ctx: ExtensionContext,
-  position: "append" | "prepend" = "append",
-) {
-  const remaining = new Set(messages.filter((message) => message.role === "toolResult").map(timingKey));
-  if (!remaining.size) return messages;
-
-  const saved = new Map<string, string>();
-  // Results published together can follow all of their timings, so match by call ID until the issuing message.
+function timingLookup() {
+  let manager: ExtensionContext["sessionManager"] | undefined;
+  let leaf: string | null = null;
+  const saved = new Map<string, { entryId: string; duration?: string }[]>();
   const pending = new Map<string, string>();
-  // ponytail: old or unknown results can scan the full ancestry; native timing metadata would remove this join.
-  for (const entry of ancestry(ctx)) {
-    if (entry.type === "message" && entry.message.role === "toolResult") {
-      const key = timingKey(entry.message);
-      if (!remaining.has(key)) continue;
-      // A reused call ID: the newer result had no timing between the two results.
-      const newer = pending.get(entry.message.toolCallId);
-      if (newer) remaining.delete(newer);
-      pending.set(entry.message.toolCallId, key);
-    } else if (entry.type === "custom" && entry.customType === TIMING_ENTRY) {
-      const timing = entry.data as SavedTiming | undefined;
-      if (
-        typeof timing?.toolCallId !== "string" ||
-        typeof timing.timestamp !== "number" ||
-        typeof timing.duration !== "string"
-      ) continue;
-      // Match by call ID: another message_end handler may have replaced the result's timestamp.
-      const key = pending.get(timing.toolCallId);
-      if (!key) continue;
-      saved.set(key, timing.duration);
-      remaining.delete(key);
-      pending.delete(timing.toolCallId);
-    } else {
-      for (const id of issuedCallIds(entry)) {
-        const key = pending.get(id);
-        if (!key) continue;
-        remaining.delete(key);
-        pending.delete(id);
+
+  function reset() {
+    manager = undefined;
+    leaf = null;
+    saved.clear();
+    pending.clear();
+  }
+
+  function reconcile(ctx: ExtensionContext) {
+    const sm = ctx.sessionManager;
+    if (manager !== sm) reset();
+    const nextLeaf = sm.getLeafId();
+    if (manager === sm && nextLeaf === leaf) return;
+    function* ancestry(): Generator<TimingFact> {
+      for (let id = nextLeaf; id;) {
+        const entry = sm.getEntry(id);
+        if (!entry) break;
+        const fact: TimingFact = {
+          id: entry.id, parentId: entry.parentId, type: entry.type,
+          checkpoint: "checkpoint" in entry && Boolean(entry.checkpoint),
+        };
+        if (entry.type === "custom") fact.customType = entry.customType;
+        if (entry.type === "message") {
+          const message = entry.message;
+          if (message.role === "assistant") fact.message = {
+            role: message.role,
+            toolCalls: message.content.flatMap(block => block.type === "toolCall" ? [{ id: block.id }] : []),
+          };
+          else if (message.role === "toolResult") fact.message = {
+            role: message.role, timestamp: message.timestamp, toolCallId: message.toolCallId,
+          };
+        }
+        yield fact;
+        id = entry.parentId;
       }
     }
-    if (!remaining.size) break;
+    const suffix: TimingFact[] = [];
+    let anchored = leaf === null;
+    for (const entry of ancestry()) {
+      if (entry.id === leaf) { anchored = true; break; }
+      suffix.push(entry);
+      // Official parent lookups are O(1); do not decode the already indexed anchor.
+      if (entry.parentId === leaf) { anchored = true; break; }
+    }
+    if (!anchored) { saved.clear(); pending.clear(); }
+    // ponytail: cold legacy recovery/navigation is O(P) once, with small facts only;
+    // an indexed native timing field could remove that replay without losing old markers.
+    for (const entry of suffix.reverse()) {
+      if (entry.type === "custom" && entry.customType === TIMING_ENTRY) {
+        const record = sm.getEntry(entry.id);
+        const timing = record?.type === "custom" ? record.data as SavedTiming | undefined : undefined;
+        if (typeof timing?.toolCallId === "string" && typeof timing.timestamp === "number" && typeof timing.duration === "string") {
+          pending.set(timing.toolCallId, timing.duration);
+        }
+      } else if (entry.type === "message" && entry.message?.role === "assistant" && !entry.checkpoint) {
+        for (const call of entry.message.toolCalls ?? []) pending.delete(call.id);
+      } else if (entry.type === "message" && entry.message?.role === "toolResult") {
+        const { toolCallId, timestamp } = entry.message;
+        if (typeof toolCallId !== "string" || typeof timestamp !== "number") continue;
+        const key = timingKey({ toolCallId, timestamp });
+        const occurrences = saved.get(key) ?? [];
+        occurrences.push({ entryId: entry.id, duration: pending.get(toolCallId) });
+        saved.set(key, occurrences);
+        pending.delete(toolCallId);
+      }
+    }
+    manager = sm;
+    leaf = nextLeaf;
   }
 
-  return messages.map((message) => {
-    if (message.role !== "toolResult") return message;
-    const duration = saved.get(timingKey(message));
-    if (!duration) return message;
-    const marker = { type: "text" as const, text: duration };
-    return {
-      ...message,
-      content: position === "prepend" ? [marker, ...message.content] : [...message.content, marker],
-    };
-  });
+  function annotate(messages: ContextWithSystemEvent["messages"], position: "append" | "prepend" = "append") {
+    const remaining = new Map<string, number>();
+    for (const message of messages) if (message.role === "toolResult") {
+      const key = timingKey(message);
+      remaining.set(key, (remaining.get(key) ?? 0) + 1);
+    }
+    const used = new Set<string>();
+    return messages.map((message, index) => {
+      if (message.role !== "toolResult") return message;
+      const key = timingKey(message);
+      const occurrences = saved.get(key);
+      let occurrence = occurrences?.[0];
+      if (occurrences && occurrences.length > 1) {
+        const available = occurrences.filter(item => !used.has(item.entryId));
+        const matches = available.filter(item => {
+          const entry = manager?.getEntry(item.entryId);
+          return entry?.type === "message" && entry.message.role === "toolResult"
+            && isDeepStrictEqual(entry.message.content, message.content);
+        });
+        // ponytail: request copies omit entry IDs; indistinguishable filtered copies
+        // align to newest retained occurrences until Pi exposes request occurrence IDs.
+        const candidates = matches.length ? matches : available;
+        let copiesRemaining = remaining.get(key) ?? 0;
+        if (matches.length) {
+          copiesRemaining = 0;
+          for (let i = index; i < messages.length; i++) {
+            const copy = messages[i];
+            if (copy?.role === "toolResult" && timingKey(copy) === key && isDeepStrictEqual(copy.content, message.content)) copiesRemaining++;
+          }
+        }
+        occurrence = candidates[Math.max(0, candidates.length - copiesRemaining)];
+      }
+      if (occurrence) used.add(occurrence.entryId);
+      remaining.set(key, (remaining.get(key) ?? 1) - 1);
+      const duration = occurrence?.duration;
+      if (!duration) return message;
+      const marker = { type: "text" as const, text: duration };
+      return { ...message, content: position === "prepend" ? [marker, ...message.content] : [...message.content, marker] };
+    });
+  }
+  return { reset, reconcile, annotate };
 }
 
 export default function (pi: ExtensionAPI) {
+  const lookup = timingLookup();
   const starts = new Map<string, number>();
   const durations = new Map<string, string>();
 
@@ -147,20 +203,30 @@ export default function (pi: ExtensionAPI) {
     });
   });
 
-  pi.on("context_with_system", (event, ctx) => ({ messages: withDurations(event.messages, ctx) }));
+  pi.on("context_with_system", (event, ctx) => {
+    if (!event.messages.some(message => message.role === "toolResult")) return;
+    lookup.reconcile(ctx);
+    return { messages: lookup.annotate(event.messages) };
+  });
 
   pi.on("session_before_compact", ({ preparation }, ctx) => {
     // Native summarization bypasses context hooks and truncates tool text from the end.
     // Put timing first in its input copies, never in saved messages or ordinary requests.
-    preparation.messagesToSummarize = withDurations(preparation.messagesToSummarize, ctx, "prepend");
-    preparation.turnPrefixMessages = withDurations(preparation.turnPrefixMessages, ctx, "prepend");
+    if (!preparation.messagesToSummarize.some(message => message.role === "toolResult") &&
+        !preparation.turnPrefixMessages.some(message => message.role === "toolResult")) return;
+    lookup.reconcile(ctx);
+    const cut = preparation.messagesToSummarize.length;
+    const messages = lookup.annotate([...preparation.messagesToSummarize, ...preparation.turnPrefixMessages], "prepend");
+    preparation.messagesToSummarize = messages.slice(0, cut);
+    preparation.turnPrefixMessages = messages.slice(cut);
   });
 
   const clearTimings = () => {
     starts.clear();
     durations.clear();
   };
-  pi.on("session_start", clearTimings);
+  pi.on("session_start", () => { clearTimings(); lookup.reset(); });
+  pi.on("session_tree", () => { clearTimings(); lookup.reset(); });
   pi.on("agent_end", clearTimings);
   pi.on("agent_settled", clearTimings);
 }
