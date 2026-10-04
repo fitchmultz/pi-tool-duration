@@ -25,9 +25,9 @@ concurrency:
 
 jobs:
   resolve:
-    uses: fitchmultz/.github/.github/workflows/resolve-hosts.yml@67c470e53fed794c2abbc444069792ff494b6f6c # main
+    uses: fitchmultz/.github/.github/workflows/resolve-hosts.yml@3b7a5f72d9c2d67d6fb53ef7bd308b005c385af3 # main
     with:
-      automation-ref: 67c470e53fed794c2abbc444069792ff494b6f6c # main
+      automation-ref: 3b7a5f72d9c2d67d6fb53ef7bd308b005c385af3 # main
       official-version: ${{ inputs.official-version }}
       fork-ref: ${{ inputs.fork-ref }}
 
@@ -49,7 +49,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: fitchmultz/.github
-          ref: 67c470e53fed794c2abbc444069792ff494b6f6c # main
+          ref: 3b7a5f72d9c2d67d6fb53ef7bd308b005c385af3 # main
           path: automation
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
