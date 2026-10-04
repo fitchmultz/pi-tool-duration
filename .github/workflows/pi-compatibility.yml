@@ -5,6 +5,16 @@ on:
   schedule:
     - cron: '17 9 * * 1'
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      official-version:
+        description: Official stable version resolved for this run; blank resolves latest
+        type: string
+        default: ''
+      fork-ref:
+        description: Maintained fork commit resolved for this run; blank resolves main
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -14,19 +24,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  resolve:
+    uses: fitchmultz/.github/.github/workflows/resolve-hosts.yml@33c292e42ab4f4c815c0f1c8e775d5adf0a3e5b3 # main
+    with:
+      automation-ref: 33c292e42ab4f4c815c0f1c8e775d5adf0a3e5b3 # main
+      official-version: ${{ inputs.official-version }}
+      fork-ref: ${{ inputs.fork-ref }}
+
   compatibility:
+    needs: resolve
+    if: ${{ !cancelled() }}
     name: compatibility / compatibility
     runs-on: ubuntu-latest
     timeout-minutes: 7
     steps:
+      - name: Require resolved latest hosts
+        env:
+          RESOLVE: ${{ needs.resolve.result }}
+        run: test "$RESOLVE" = success
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: extension
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          repository: fitchmultz/.github
+          ref: 33c292e42ab4f4c815c0f1c8e775d5adf0a3e5b3 # main
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
           repository: fitchmultz/pi
-          ref: main
+          ref: ${{ needs.resolve.outputs.fork-ref }}
           path: fork
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -39,14 +68,20 @@ jobs:
       - name: Check current official Pi
         working-directory: extension
         shell: bash
+        env:
+          OFFICIAL_VERSION: ${{ needs.resolve.outputs.official-version }}
         run: |
           npm ci --ignore-scripts
-          latest="$(npm view @earendil-works/pi-coding-agent dist-tags.latest)"
-          [[ "$latest" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund "@earendil-works/pi-coding-agent@$latest"
-          actual="$(node -p 'require("./node_modules/@earendil-works/pi-coding-agent/package.json").version')"
-          test "$actual" = "$latest"
-          echo "Official Pi: $actual" >> "$GITHUB_STEP_SUMMARY"
+          node --input-type=module <<'NODE'
+          import { mkdirSync } from 'node:fs';
+          import { prepareHost, selectDevelopmentHost } from '../automation/scripts/hosts.mjs';
+          import { writeJson } from '../automation/scripts/common.mjs';
+          const host = await prepareHost(`${process.env.RUNNER_TEMP}/official-host`, 'official', process.env.OFFICIAL_VERSION, process.env);
+          const selected = selectDevelopmentHost(process.cwd(), host, process.env);
+          mkdirSync(`${process.env.RUNNER_TEMP}/host-evidence`, { recursive: true });
+          writeJson(`${process.env.RUNNER_TEMP}/host-evidence/official.json`, { provenance: host.provenance, ...selected });
+          console.log(JSON.stringify(selected));
+          NODE
           npm run check
       - name: Build current maintained fork
         working-directory: fork
@@ -56,8 +91,24 @@ jobs:
           npm ci --ignore-scripts
           npm run hydrate:model-data
           npm run build:offline
+          node ../automation/scripts/pack-fork.mjs . "$RUNNER_TEMP/fork-package" "$(git rev-parse HEAD)"
       - name: Exercise fork runtime and disk restoration
         working-directory: extension
-        env:
-          PI_HOST_INDEX: ${{ github.workspace }}/fork/packages/coding-agent/dist/index.js
-        run: node --test test/runtime.test.mjs test/restoration.test.mjs
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { prepareHost, selectDevelopmentHost } from '../automation/scripts/hosts.mjs';
+          import { run, writeJson } from '../automation/scripts/common.mjs';
+          const host = await prepareHost(`${process.env.RUNNER_TEMP}/fork-host`, 'fork', `${process.env.RUNNER_TEMP}/fork-package`, process.env);
+          const selected = selectDevelopmentHost(process.cwd(), host, process.env);
+          writeJson(`${process.env.RUNNER_TEMP}/host-evidence/fork.json`, { provenance: host.provenance, ...selected });
+          run('node', ['--test', 'test/runtime.test.mjs', 'test/restoration.test.mjs'], { env: { ...process.env, PI_HOST_INDEX: selected.index } });
+          NODE
+      - name: Retain qualification evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: host-qualification
+          path: ${{ runner.temp }}/host-evidence
+          if-no-files-found: error
+          retention-days: 3
