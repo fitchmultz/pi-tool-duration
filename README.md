@@ -29,6 +29,8 @@ Requires Pi **1.0.0 or later** on Node.js **24 or later**. Tested against offici
 pi install npm:pi-tool-duration
 ```
 
+Or install from Git: `pi install git:github.com/fitchmultz/pi-tool-duration`.
+
 For local development:
 
 ```bash
