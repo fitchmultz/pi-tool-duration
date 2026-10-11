@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Documentation
+
+- Rewrite the README around installation, examples, and configuration; add a tool-timing diagram and move technical and maintainer reference material into `docs/`.
+
 ## [0.6.0] - 2026-10-01
 
 ### Changed
