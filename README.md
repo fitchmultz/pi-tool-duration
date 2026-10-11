@@ -4,8 +4,6 @@ This Pi extension adds elapsed time to tool results that the model receives. Use
 
 ![Pi runs a tool. The extension saves elapsed time and adds a marker to the model's copy. The terminal keeps its native output.](.github/readme/tool-timing.png)
 
-*The extension saves elapsed time in the session. It adds a time marker to the model's copy of each eligible tool result.*
-
 ## Install
 
 Use **Pi 1.0.0 or later** and **Node.js 24 or later**. Tests cover official Pi and the maintained [`fitchmultz/pi` fork](https://github.com/fitchmultz/pi).
@@ -56,7 +54,7 @@ A tool that starts a background job reports the duration of the launch call.
 
 The extension leaves recorded tool output and terminal output unchanged.
 
-Saved timings survive reload, resume, forks, branch navigation, and retained compaction history. A compaction summary can omit individual timings.
+The extension saves elapsed time in the session. Timings survive reload, resume, forks, branch navigation, and retained compaction history. A compaction summary can omit individual timings.
 
 Direct `!` / `!!` commands and RPC `bash` messages are outside the scope of this extension.
 
