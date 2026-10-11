@@ -1,75 +1,72 @@
 # pi-tool-duration
 
-`pi-tool-duration` adds elapsed time to the tool results Pi sends to the model. That gives the model context about slow commands and failed calls, while your terminal keeps Pi's usual output.
+This Pi extension adds elapsed time to tool results that the model receives. Use it to give the model context about slow or failed tool calls.
 
-![A Pi tool call is timed, its model-visible result gets an elapsed-time marker, and the terminal keeps its native output.](.github/readme/tool-timing.png)
+![Pi runs a tool. The extension saves elapsed time and adds a marker to the model's copy. The terminal keeps its native output.](.github/readme/tool-timing.png)
 
-*Pi measures each call, saves the timing in the session, and adds it only to the copy the model receives.*
+*The extension saves elapsed time in the session. It adds a time marker to the model's copy of each eligible tool result.*
 
 ## Install
 
-Requires **Pi 1.0.0+** and **Node.js 24+**. Tested with official Pi and the maintained [`fitchmultz/pi` fork](https://github.com/fitchmultz/pi).
+Use **Pi 1.0.0 or later** and **Node.js 24 or later**. Tests cover official Pi and the maintained [`fitchmultz/pi` fork](https://github.com/fitchmultz/pi).
 
 ```bash
 pi install npm:pi-tool-duration
 pi
 ```
 
-Already running Pi? Use `/reload` to load the extension. You can also [install from Git or try a local checkout](docs/development.md#local-setup).
-
-[Try a timed call](#try-it) below, or [adjust which calls get a timing marker](#configure).
+Run `/reload` in an open Pi session to load the extension. Then [try a tool call](#try-it).
 
 ## Try it
 
-Ask Pi:
+Ask Pi to run this tool call:
 
 ```text
 Use bash to run: sleep 1; echo hi
 ```
 
-The model gets a result like this. The exact time depends on the call:
-
-```text
-hi
-[host tool-call elapsed: 1.0s]
-```
-
-You still see Pi's native tool rendering in the terminal. The extension adds no extra timing line there.
-
-By default, successful calls taking **50 ms or more** get a marker. Faster successful calls stay unchanged because they would round to `0.0s`. Failed calls get a marker regardless of the threshold, when Pi observed their start and end.
+The model receives `hi` and a marker such as `[host tool-call elapsed: 1.0s]`. The marker reports elapsed time to tenths of a second.
 
 ## Configure
 
-Set a threshold when starting Pi:
+The default threshold is **50 ms**. Faster successful calls get no marker because their time would round to `0.0s`.
+
+Failed calls get a marker at any threshold when Pi records their start and end.
+
+Set the threshold when you start Pi:
 
 ```bash
-# Include even instant calls.
+# Include all observed tool results.
 PI_TOOL_DURATION_THRESHOLD_MS=0 pi
 
-# Include successful calls taking at least a second, plus failed calls.
+# Include successful calls of at least one second and failed calls.
 PI_TOOL_DURATION_THRESHOLD_MS=1000 pi
 
-# A valid CLI value overrides the environment variable.
+# Set a 500 ms threshold through the CLI.
 pi --tool-duration-threshold-ms 500
 ```
 
-Use a non-negative number of milliseconds. If the CLI value is invalid, the extension tries the environment variable, then the 50 ms default. Failed calls still get a marker.
+Use a non-negative number of milliseconds. A valid CLI value takes precedence over the environment variable.
 
-## How it works
+## Timing limits
 
-The extension times each call from Pi's execution-start event to its execution-end event and rounds to tenths of a second. It saves the timing separately in the session, so recorded tool text, details, and images stay intact.
+The measurement includes preflight and result processing. Parallel calls can overlap. Do not add their durations to measure total task time.
 
-The time includes preflight and result processing. Parallel calls can overlap, so don't add their times together to measure the whole task. For a tool that starts a background job, the marker covers the launch call.
+A tool that starts a background job reports the duration of the launch call.
 
-Saved timings survive reload, resume, forks, branch navigation, and retained compaction history. Generated summaries can leave out individual timings.
+The extension leaves recorded tool output and terminal output unchanged.
 
-Built-in and extension tools with Pi execution events are covered. Direct `!` / `!!` commands and RPC `bash` messages aren't tool results, so they don't get markers.
+Saved timings survive reload, resume, forks, branch navigation, and retained compaction history. A compaction summary can omit individual timings.
 
-The [timing reference](docs/reference.md) covers the measurement boundaries, history matching, compaction, and OpenAI Responses setup.
+Direct `!` / `!!` commands and RPC `bash` messages are outside the scope of this extension.
 
-## More
+## Details
 
-[Development](docs/development.md) · [Release procedure](docs/development.md#automatic-npm-releases) · [Changelog](CHANGELOG.md) · [Report a problem](https://github.com/fitchmultz/pi-tool-duration/issues)
+Read the [timing reference](docs/reference.md) for measurement boundaries, history matching, compaction, and OpenAI Responses setup.
+
+See [development and maintenance](docs/development.md) for Git installation, local setup, compatibility checks, and releases.
+
+[Changelog](CHANGELOG.md) · [Report a problem](https://github.com/fitchmultz/pi-tool-duration/issues)
 
 ## License
 
