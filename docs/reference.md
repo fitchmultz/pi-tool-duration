@@ -34,6 +34,6 @@ Both compaction input arrays are annotated together in chronological order. Timi
 
 Use Pi's native OpenAI or OpenAI Codex Responses provider. The extension uses `context_with_system` to preserve the positions of prompt and tool updates, allowing native caching and incremental requests to work.
 
-Prefer Pi's built-in model definitions. To adjust a model's limits, use `modelOverrides`, described in [Pi's model documentation](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/models.md), which preserves native compatibility metadata. A same-ID entry in `models` replaces that metadata.
+Prefer Pi's built-in model definitions. To adjust a model's limits, use `modelOverrides`, described in [Pi's model documentation](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/models.md#configure-a-compatible-endpoint), which preserves native compatibility metadata. A same-ID entry in `models` replaces that metadata.
 
 Transport selection, reasoning settings, tool scheduling, and request-boundary steering remain Pi's responsibility. The extension does not alter provider requests or add model instructions.
