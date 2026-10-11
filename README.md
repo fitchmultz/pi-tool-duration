@@ -1,6 +1,6 @@
 # pi-tool-duration
 
-Let your Pi model see how long its tools took. This extension adds elapsed time to the tool results sent to the model while keeping Pi's terminal output unchanged, giving the model useful context when a command is slow or fails.
+`pi-tool-duration` adds elapsed time to the tool results Pi sends to the model. That gives the model context about slow commands and failed calls, while your terminal keeps Pi's usual output.
 
 ![A Pi tool call is timed, its model-visible result gets an elapsed-time marker, and the terminal keeps its native output.](.github/readme/tool-timing.png)
 
@@ -17,7 +17,7 @@ pi
 
 Already running Pi? Use `/reload` to load the extension. You can also [install from Git or try a local checkout](docs/development.md#local-setup).
 
-Next: [try a timed call](#try-it), [adjust the threshold](#configure), or read the [timing reference](docs/reference.md).
+[Try a timed call](#try-it) below, or [adjust which calls get a timing marker](#configure).
 
 ## Try it
 
@@ -27,7 +27,7 @@ Ask Pi:
 Use bash to run: sleep 1; echo hi
 ```
 
-The tool result sent to the model looks like this (the measured time can vary):
+The model gets a result like this. The exact time depends on the call:
 
 ```text
 hi
@@ -53,27 +53,23 @@ PI_TOOL_DURATION_THRESHOLD_MS=1000 pi
 pi --tool-duration-threshold-ms 500
 ```
 
-Values are non-negative milliseconds. An invalid CLI value falls back to the environment variable; an invalid environment value falls back to **50 ms**. A missing timing record does not mean the call took zero seconds.
+Use a non-negative number of milliseconds. If the CLI value is invalid, the extension tries the environment variable, then the 50 ms default. Failed calls still get a marker.
 
 ## How it works
 
-The extension measures each call from Pi's execution-start event to its execution-end event with a monotonic clock, then rounds to tenths of a second. Timing is saved separately from the tool result and added to model-request copies, leaving recorded text, details, and images intact.
+The extension times each call from Pi's execution-start event to its execution-end event and rounds to tenths of a second. It saves the timing separately in the session, so recorded tool text, details, and images stay intact.
 
-A few things to keep in mind:
+The time includes preflight and result processing. Parallel calls can overlap, so don't add their times together to measure the whole task. For a tool that starts a background job, the marker covers the launch call.
 
-- Timing includes preflight and result processing. Parallel calls can overlap, so adding their durations does not give total task time.
-- A tool that starts a background job is timed through the launch call, not the job's whole lifetime.
-- Saved timings survive reload, resume, forks, branch navigation, and retained compaction history. A generated summary may leave out individual timings.
-- Built-in and extension tools with Pi execution events are covered. Direct `!` / `!!` commands and RPC `bash` messages are outside this scope.
+Saved timings survive reload, resume, forks, branch navigation, and retained compaction history. Generated summaries can leave out individual timings.
 
-See the [timing reference](docs/reference.md) for parallel-call details, history matching, compaction, and OpenAI Responses setup.
+Built-in and extension tools with Pi execution events are covered. Direct `!` / `!!` commands and RPC `bash` messages aren't tool results, so they don't get markers.
+
+The [timing reference](docs/reference.md) covers the measurement boundaries, history matching, compaction, and OpenAI Responses setup.
 
 ## More
 
-- [Development and compatibility checks](docs/development.md)
-- [Maintainer release procedure](docs/development.md#automatic-npm-releases)
-- [Changelog](CHANGELOG.md)
-- [Report a problem](https://github.com/fitchmultz/pi-tool-duration/issues)
+[Development](docs/development.md) · [Release procedure](docs/development.md#automatic-npm-releases) · [Changelog](CHANGELOG.md) · [Report a problem](https://github.com/fitchmultz/pi-tool-duration/issues)
 
 ## License
 
