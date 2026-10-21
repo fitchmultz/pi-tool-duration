@@ -176,7 +176,18 @@ async function runPi({ calls, threshold, flag, reload = false, summarize, replac
       assert.equal(request.body.model, "scripted");
       assert.equal(request.body.stream, true);
     }
-    assert.ok(requests[0].body.tools.some((tool) => tool.name === "duration_fixture"));
+    const initial = requests[0].body;
+    // Official Pi declares initial tools at the top level. The maintained fork
+    // anchors them in additional_tools so later redefinitions preserve the prefix.
+    if (initial.tools === undefined) {
+      assert.equal(initial.input[0].type, "additional_tools");
+      assert.equal(initial.input[0].role, "developer");
+      assert.deepEqual(initial.input[0].tools.map((tool) => tool.name), ["duration_fixture"]);
+      assert.equal(initial.input.filter((item) => item.type === "additional_tools").length, 1);
+    } else {
+      assert.deepEqual(initial.tools.map((tool) => tool.name), ["duration_fixture"]);
+      assert.equal(initial.input.filter((item) => item.type === "additional_tools").length, 0);
+    }
     assert.ok(requests[1].body.input.some((message) => message.type === "function_call_output"));
 
     return {
@@ -302,11 +313,13 @@ test("preserves the native Responses prefix when a timed tool activates another 
     threshold: "0",
   });
   const [initial, next] = requests.map((request) => request.body);
-  assert.deepEqual(initial.tools.map((tool) => tool.name), ["duration_fixture"]);
   assert.deepEqual(next.tools, initial.tools, "initial tool declarations must not be hoisted or replaced");
   assert.deepEqual(next.input.slice(0, initial.input.length), initial.input, "the prompt prefix must stay byte-for-byte stable");
   const resultIndex = next.input.findIndex((item) => item.type === "function_call_output");
-  const additionIndex = next.input.findIndex((item) => item.type === "additional_tools");
+  const additionIndex = next.input.findIndex((item, index) =>
+    index >= initial.input.length && item.type === "additional_tools");
+  assert.equal(next.input.filter((item) => item.type === "additional_tools").length,
+    initial.input.filter((item) => item.type === "additional_tools").length + 1);
   assert.ok(additionIndex > resultIndex, "new tools belong inline after the timed result");
   assert.deepEqual(next.input[additionIndex].tools.map((tool) => tool.name), ["duration_extra"]);
   assert.match(JSON.stringify(next.input.slice(additionIndex + 1)), /Extra fixture available after loading/);
