@@ -58,6 +58,8 @@ Then qualify the packed latest maintained fork with `--host fork --target /path/
 
 Runtime tests use the installed host's manifest `bin.pi` entry and a local scripted Responses provider in an isolated HOME. `PI_HOST_CLI`, `PI_COMPAT_EXPECTED_VERSION`, and `PI_COMPAT_EXPECTED_PACKAGE_DIR` can assert the selected graph.
 
+The Responses runtime fixture checks the host's native wire declarations: official Pi 1.3.0 starts with top-level `tools`, while the maintained fork anchors even the initial declaration in an `additional_tools` input item. Both must preserve the entire initial input prefix and append newly activated tools after the timed result; the tests do not rewrite requests or supply a runtime compatibility adapter.
+
 The runtime and restoration tests use the installed host by default; `PI_HOST_INDEX` can select another host's absolute `dist/index.js`. They execute timed tools and verify reload plus separate-process disk restoration on both hosts. The maintained 1.0 fork no longer has native checkpoints; separate-process disk restoration is the portable recovery check. These tests use local scripted model completions without provider network calls or credentials.
 
 ## Lookup implementation notes
