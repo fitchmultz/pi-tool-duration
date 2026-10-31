@@ -70,6 +70,6 @@ Both 1.0 targets use official O(1) parent lookups; unsupported metadata, revisio
 
 ## Automatic npm releases
 
-Follow the [shared release procedure](https://github.com/fitchmultz/.github#automatic-npm-releases): merge a reviewed PR into `main` with an intentional `package.json` version bump and a matching versioned `CHANGELOG.md` section. Once configured and enabled, publication is unattended after the existing current-official/fork compatibility checks and candidate-tarball qualification pass. Complete any applicable package-specific release evidence before merging the bump. Automation never bumps versions, overwrites releases, or republishes an existing version; existing manual publisher instructions remain valid.
+Once configured and enabled, merges to `main` trigger automatic versioning and releases to npm and GitHub after the current-official/fork compatibility checks and candidate-tarball qualification pass. Follow the [shared release procedure](https://github.com/fitchmultz/.github#automatic-npm-releases) for setup, retries, and recovery.
 
-Failed or unpublished candidates can retry daily at 12:17 UTC or via manual dispatch of `npm release` on `main`, without another bump. Set repository variable `NPM_RELEASE_ENABLED` to anything other than `true` to stop new release plans; cancel pending runs separately when needed. Workflow validation is not evidence of a completed real OIDC publication.
+Set repository variable `NPM_RELEASE_ENABLED` to anything other than `true` to stop new release plans; cancel pending runs separately when needed. Workflow validation is not evidence of a completed real OIDC publication.
