@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## 0.6.2 - 2026-10-31
+
+<!-- npm-release:unreleased:start -->
+<!-- npm-release:unreleased:end -->
+
+- Automate reviewed npm patch releases (#38) ([f000cb5](https://github.com/fitchmultz/pi-tool-duration/commit/f000cb550f8e0cfc8b3ca5deafa2f01ffce2687a))
+
+### What's Changed
+* Automate reviewed npm patch releases by @fitchmultz in https://github.com/fitchmultz/pi-tool-duration/pull/38
+
+
+**Full Changelog**: https://github.com/fitchmultz/pi-tool-duration/compare/v0.6.1...v0.6.2
+
 ## [0.6.1] - 2026-10-31
 
 ### Documentation
