@@ -2,9 +2,16 @@
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-31
+
 ### Documentation
 
 - Rewrite the README around installation, examples, and configuration; add a tool-timing diagram and move technical and maintainer reference material into `docs/`.
+- Document the unpinned Git installation fallback.
+
+### Tests
+
+- Check native Responses tool declarations on current official Pi and the maintained fork.
 
 ## [0.6.0] - 2026-10-01
 
