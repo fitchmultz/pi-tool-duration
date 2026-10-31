@@ -6,7 +6,7 @@ This Pi extension adds elapsed time to tool results that the model receives. Use
 
 ## Install
 
-Use **Pi 1.0.0 or later** and **Node.js 24 or later**. Tests cover official Pi and the maintained [`fitchmultz/pi` fork](https://github.com/fitchmultz/pi).
+Use Pi and Node.js. The [development guide](https://github.com/fitchmultz/pi-tool-duration/blob/main/docs/development.md) lists version requirements. Tests cover official Pi and the maintained [`fitchmultz/pi` fork](https://github.com/fitchmultz/pi).
 
 ```bash
 pi install npm:pi-tool-duration
