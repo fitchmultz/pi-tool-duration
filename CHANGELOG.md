@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## 0.6.4 - 2026-11-01
+
+<!-- npm-release:unreleased:start -->
+<!-- npm-release:unreleased:end -->
+
+- Use direct Flash for automatic release remediation (#42) ([eb6fbf5](https://github.com/fitchmultz/pi-tool-duration/commit/eb6fbf5765d1602512f622f123c8aaa76ec31b33))
+
+### What's Changed
+* Use direct Flash for necessary release remediation by @fitchmultz in https://github.com/fitchmultz/pi-tool-duration/pull/42
+
+
+**Full Changelog**: https://github.com/fitchmultz/pi-tool-duration/compare/v0.6.3...v0.6.4
+
 ## 0.6.3 - 2026-11-01
 
 <!-- npm-release:unreleased:start -->
