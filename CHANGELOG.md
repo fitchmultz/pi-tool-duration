@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## 0.6.3 - 2026-11-01
+
+<!-- npm-release:unreleased:start -->
+<!-- npm-release:unreleased:end -->
+
+- Pin reviewed release source binding (#40) ([e34f502](https://github.com/fitchmultz/pi-tool-duration/commit/e34f50225957183c0cc9a2312d68076d4caa7717))
+
+### What's Changed
+* Bind automatic releases to the reviewed version by @fitchmultz in https://github.com/fitchmultz/pi-tool-duration/pull/40
+
+
+**Full Changelog**: https://github.com/fitchmultz/pi-tool-duration/compare/v0.6.2...v0.6.3
+
 ## 0.6.2 - 2026-10-31
 
 <!-- npm-release:unreleased:start -->
