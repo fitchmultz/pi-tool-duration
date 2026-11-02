@@ -10,10 +10,12 @@
 - chore(deps-dev): bump brace-expansion from 5.0.9 to 5.0.12 (#37) ([0710efb](https://github.com/fitchmultz/pi-tool-duration/commit/0710efb611c04032e7fe8ff0ddceac4360f8b28d))
 
 ### What's Changed
-* chore(deps-dev): bump brace-expansion from 5.0.9 to 5.0.12 by @dependabot[bot] in https://github.com/fitchmultz/pi-tool-duration/pull/37
+
+- chore(deps-dev): bump brace-expansion from 5.0.9 to 5.0.12 by @dependabot[bot] in https://github.com/fitchmultz/pi-tool-duration/pull/37
 
 ### New Contributors
-* @dependabot[bot] made their first contribution in https://github.com/fitchmultz/pi-tool-duration/pull/37
+
+- @dependabot[bot] made their first contribution in https://github.com/fitchmultz/pi-tool-duration/pull/37
 
 **Full Changelog**: https://github.com/fitchmultz/pi-tool-duration/compare/v0.6.4...v0.6.5
 
@@ -25,8 +27,8 @@
 - Use direct Flash for automatic release remediation (#42) ([eb6fbf5](https://github.com/fitchmultz/pi-tool-duration/commit/eb6fbf5765d1602512f622f123c8aaa76ec31b33))
 
 ### What's Changed
-* Use direct Flash for necessary release remediation by @fitchmultz in https://github.com/fitchmultz/pi-tool-duration/pull/42
 
+- Use direct Flash for necessary release remediation by @fitchmultz in https://github.com/fitchmultz/pi-tool-duration/pull/42
 
 **Full Changelog**: https://github.com/fitchmultz/pi-tool-duration/compare/v0.6.3...v0.6.4
 
@@ -38,8 +40,8 @@
 - Pin reviewed release source binding (#40) ([e34f502](https://github.com/fitchmultz/pi-tool-duration/commit/e34f50225957183c0cc9a2312d68076d4caa7717))
 
 ### What's Changed
-* Bind automatic releases to the reviewed version by @fitchmultz in https://github.com/fitchmultz/pi-tool-duration/pull/40
 
+- Bind automatic releases to the reviewed version by @fitchmultz in https://github.com/fitchmultz/pi-tool-duration/pull/40
 
 **Full Changelog**: https://github.com/fitchmultz/pi-tool-duration/compare/v0.6.2...v0.6.3
 
@@ -51,8 +53,8 @@
 - Automate reviewed npm patch releases (#38) ([f000cb5](https://github.com/fitchmultz/pi-tool-duration/commit/f000cb550f8e0cfc8b3ca5deafa2f01ffce2687a))
 
 ### What's Changed
-* Automate reviewed npm patch releases by @fitchmultz in https://github.com/fitchmultz/pi-tool-duration/pull/38
 
+- Automate reviewed npm patch releases by @fitchmultz in https://github.com/fitchmultz/pi-tool-duration/pull/38
 
 **Full Changelog**: https://github.com/fitchmultz/pi-tool-duration/compare/v0.6.1...v0.6.2
 

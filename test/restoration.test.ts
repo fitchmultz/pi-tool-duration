@@ -3,13 +3,16 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import test from "node:test";
+import { test as nodeTest } from "node:test";
 import { fileURLToPath } from "node:url";
 
-const hostIndex = process.env.PI_HOST_INDEX ?? fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
+const hostIndex =
+  process.env.PI_HOST_INDEX ??
+  fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
 
-test("native timed results survive reload and cold disk restoration", () => {
+nodeTest("native timed results survive reload and cold disk restoration", () => {
   const home = mkdtempSync(join(tmpdir(), "pi-tool-duration-checkpoint-"));
+  // The program runs in separate Node processes; its own typing is not part of this repo.
   const program = `
     import assert from "node:assert/strict";
     import { findPackageJSON } from "node:module";
@@ -67,7 +70,7 @@ test("native timed results survive reload and cold disk restoration", () => {
     });
     const assertTimed = messages => {
       const results = messages.filter(message => message.role === "toolResult");
-      assert.equal(results.length, 1);
+      assert.equal(results.length,1);
       assert.deepEqual(results[0].content, [
         { type: "text", text: "timed output" },
         { type: "text", text: "[host tool-call elapsed: 1.5s]" },
@@ -125,15 +128,26 @@ test("native timed results survive reload and cold disk restoration", () => {
     // Separate processes prevent restoration from reusing in-memory timing maps.
     for (const restore of ["", "disk"]) {
       const result = spawnSync(process.execPath, ["--input-type=module", "--eval", program], {
-        cwd: home, encoding: "utf8", timeout: 20_000,
+        cwd: home,
+        encoding: "utf8",
+        timeout: 20_000,
         env: {
-          HOME: home, PATH: process.env.PATH ?? "", PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1",
-          PI_CODING_AGENT_DIR: join(home, "agent"), PI_HOST_INDEX: hostIndex,
-          TEST_EXTENSION: resolve(process.env.PI_TOOL_DURATION_TEST_EXTENSION ?? fileURLToPath(new URL("../extensions/tool-duration/index.ts", import.meta.url))),
+          HOME: home,
+          PATH: process.env.PATH ?? "",
+          PI_OFFLINE: "1",
+          PI_SKIP_VERSION_CHECK: "1",
+          PI_CODING_AGENT_DIR: join(home, "agent"),
+          PI_HOST_INDEX: hostIndex,
+          TEST_EXTENSION: resolve(
+            process.env.PI_TOOL_DURATION_TEST_EXTENSION ??
+              fileURLToPath(new URL("../extensions/tool-duration/index.ts", import.meta.url)),
+          ),
           TEST_RESTORE: restore,
         },
       });
-      assert.equal(result.status, 0, (restore || "capture") + ": " + (result.stderr || String(result.error)));
+      const label = restore !== "" ? restore : "capture";
+      const detail = result.stderr !== "" ? result.stderr : String(result.error);
+      assert.equal(result.status, 0, `${label}: ${detail}`);
     }
   } finally {
     rmSync(home, { recursive: true, force: true });
