@@ -11,7 +11,7 @@ npm ci --ignore-scripts
 npm run check
 ```
 
-`check` runs typechecking, unit and native runtime tests, and an installed npm package smoke test. There is no production build or `prepare` step.
+`check` runs every gate independently and aggregates failures: lint (`oxlint --deny-warnings .`), format check (`oxfmt --check .`), typechecking (`tsc`), unit tests, native runtime and restoration tests, policy enforcement and coverage controls, and an installed npm package smoke test. There is no production build or `prepare` step.
 
 Install from Git with:
 

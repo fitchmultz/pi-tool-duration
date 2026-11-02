@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: '17 12 * * *'
+    - cron: "17 12 * * *"
   workflow_dispatch:
 
 permissions:
@@ -31,8 +31,13 @@ jobs:
       official-version: ${{ needs.plan.outputs.official-version }}
       fork-ref: ${{ needs.plan.outputs.fork-ref }}
 
+  quality:
+    needs: plan
+    if: needs.plan.outputs.release == 'true'
+    uses: ./.github/workflows/quality.yml
+
   publish:
-    needs: [plan, checks]
+    needs: [plan, checks, quality]
     if: needs.plan.outputs.release == 'true'
     permissions:
       contents: write

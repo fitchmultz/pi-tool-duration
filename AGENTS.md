@@ -1,5 +1,9 @@
 # Project instructions
 
+## Quality standard
+
+Follow [docs/strict-oxlint-oxfmt-standard.md](docs/strict-oxlint-oxfmt-standard.md). The normal acceptance command is `npm run check` (lint, format, typecheck, tests). Every lint or configuration exception needs an evidence-based record in [docs/adoption-record.md](docs/adoption-record.md); do not add filters, budgets, or undocumented disables.
+
 ## Dependency maintenance
 
 - Frequently and proactively check releases and make appropriate upgrades across maintained packages and all runtime, development, build, test, and tool dependencies, prioritizing the latest stable official Pi and the intended maintained Pi fork. Routine in-scope maintenance needs no repeated approval; delivery remains subject to existing authority and gates.
