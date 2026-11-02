@@ -9,7 +9,7 @@ This repository adopts the [Strict Oxlint/Oxfmt Engineering Guide](strict-oxlint
 
 - Repository: `pi-tool-duration` (npm package, Pi extension).
 - Runtime and package manager: Node.js >= 24, npm with a committed lockfile resolving only from the public npm registry.
-- Installed tool versions (devDependencies, exact pins): oxlint 1.90.0, oxlint-tsgolint 7.0.2005, oxfmt 0.75.0, TypeScript 7.0.2, @types/node 24.19.1, @earendil-works/pi-coding-agent 1.0.0 (development host; the peer dependency stays `*` and optional, and CI re-qualifies against the latest official and maintained-fork hosts).
+- Installed tool versions (devDependencies, exact pins): oxlint 1.90.0, oxlint-tsgolint 7.0.2005, oxfmt 0.75.0, TypeScript 7.0.2, @types/node 24.19.1, @earendil-works/pi-coding-agent 1.5.0 (development host; the peer dependency stays `*` and optional, and CI re-qualifies against the latest official and maintained-fork hosts).
 
 ## Configuration and acceptance paths
 
