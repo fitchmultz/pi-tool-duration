@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## 0.6.7 - 2026-11-02
+
+<!-- npm-release:unreleased:start -->
+<!-- npm-release:unreleased:end -->
+
+- Raise the Pi floor to 1.5.0 (#48) ([e0f20b6](https://github.com/fitchmultz/pi-tool-duration/commit/e0f20b6d4c1709598b548fbe76c72ddb5dea2a06))
+
+### What's Changed
+
+- Raise the Pi floor to 1.5.0 by @fitchmultz in https://github.com/fitchmultz/pi-tool-duration/pull/48
+
+**Full Changelog**: https://github.com/fitchmultz/pi-tool-duration/compare/v0.6.6...v0.6.7
+
 ## 0.6.6 - 2026-11-02
 
 <!-- npm-release:unreleased:start -->
