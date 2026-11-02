@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+## 0.6.5 - 2026-11-02
+
+<!-- npm-release:unreleased:start -->
+<!-- npm-release:unreleased:end -->
+
+- chore(deps-dev): bump brace-expansion from 5.0.9 to 5.0.12 (#37) ([0710efb](https://github.com/fitchmultz/pi-tool-duration/commit/0710efb611c04032e7fe8ff0ddceac4360f8b28d))
+
+### What's Changed
+* chore(deps-dev): bump brace-expansion from 5.0.9 to 5.0.12 by @dependabot[bot] in https://github.com/fitchmultz/pi-tool-duration/pull/37
+
+### New Contributors
+* @dependabot[bot] made their first contribution in https://github.com/fitchmultz/pi-tool-duration/pull/37
+
+**Full Changelog**: https://github.com/fitchmultz/pi-tool-duration/compare/v0.6.4...v0.6.5
+
 ## 0.6.4 - 2026-11-01
 
 <!-- npm-release:unreleased:start -->
