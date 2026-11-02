@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## 0.6.6 - 2026-11-02
+
+<!-- npm-release:unreleased:start -->
+<!-- npm-release:unreleased:end -->
+
+- Adopt the strict Oxlint/Oxfmt engineering standard (v5.1.2) (#46) ([af7fa6d](https://github.com/fitchmultz/pi-tool-duration/commit/af7fa6de4f73c13c972f59e9749d775c05ee5e9a))
+
+### What's Changed
+
+- Adopt the strict Oxlint/Oxfmt engineering standard (v5.1.2) by @fitchmultz in https://github.com/fitchmultz/pi-tool-duration/pull/46
+
+**Full Changelog**: https://github.com/fitchmultz/pi-tool-duration/compare/v0.6.5...v0.6.6
+
 ## 0.6.5 - 2026-11-02
 
 <!-- npm-release:unreleased:start -->
