@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## 0.6.8 - 2026-11-02
+
+<!-- npm-release:unreleased:start -->
+<!-- npm-release:unreleased:end -->
+
+- Recheck unreported Cursor reviews in automatic releases (#50) ([85c8cc8](https://github.com/fitchmultz/pi-tool-duration/commit/85c8cc8503c37852f7758098cea69ee67fddcd1d))
+
+### What's Changed
+
+- Recheck unreported Cursor reviews in automatic releases by @fitchmultz in https://github.com/fitchmultz/pi-tool-duration/pull/50
+
+**Full Changelog**: https://github.com/fitchmultz/pi-tool-duration/compare/v0.6.7...v0.6.8
+
 ## 0.6.7 - 2026-11-02
 
 <!-- npm-release:unreleased:start -->
