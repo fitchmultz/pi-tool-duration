@@ -334,26 +334,18 @@ async function runPi(options: RunPiOptions) {
     const [initialRequest] = requests;
     assert.ok(initialRequest, "expected an initial request");
     const initial = initialRequest.body;
-    // Official Pi declares initial tools at the top level. The maintained fork
-    // anchors them in additional_tools so later redefinitions preserve the prefix.
-    if (initial.tools === undefined) {
-      const first = initial.input.at(0);
-      assert.ok(first, "expected an initial input item");
-      assert.ok(first.tools, "additional_tools items must carry tools");
-      assert.equal(first.type, "additional_tools");
-      assert.equal(first.role, "developer");
-      assert.deepEqual(
-        first.tools.map((tool) => tool.name),
-        ["duration_fixture"],
-      );
-      assert.equal(initial.input.filter((item) => item.type === "additional_tools").length, 1);
-    } else {
-      assert.deepEqual(
-        initial.tools.map((tool) => tool.name),
-        ["duration_fixture"],
-      );
-      assert.equal(initial.input.filter((item) => item.type === "additional_tools").length, 0);
-    }
+    // Both hosts anchor even the initial declaration in additional_tools so later redefinitions preserve the prefix.
+    assert.equal(initial.tools, undefined);
+    const first = initial.input.at(0);
+    assert.ok(first, "expected an initial input item");
+    assert.ok(first.tools, "additional_tools items must carry tools");
+    assert.equal(first.type, "additional_tools");
+    assert.equal(first.role, "developer");
+    assert.deepEqual(
+      first.tools.map((tool) => tool.name),
+      ["duration_fixture"],
+    );
+    assert.equal(initial.input.filter((item) => item.type === "additional_tools").length, 1);
     const followUp = requests.at(1);
     assert.ok(followUp, "expected a follow-up request");
     assert.ok(followUp.body.input.some((message) => message.type === "function_call_output"));
