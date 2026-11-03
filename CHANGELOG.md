@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## 0.6.9 - 2026-11-03
+
+<!-- npm-release:unreleased:start -->
+<!-- npm-release:unreleased:end -->
+
+- Skip no-op releases and restate malformed remediation dispositions (#53) ([bf45c06](https://github.com/fitchmultz/pi-tool-duration/commit/bf45c06add455d46f5a305b1267638bf85756e0d))
+
+### What's Changed
+
+- Skip no-op releases and restate malformed remediation dispositions by @fitchmultz in https://github.com/fitchmultz/pi-tool-duration/pull/53
+
+**Full Changelog**: https://github.com/fitchmultz/pi-tool-duration/compare/v0.6.8...v0.6.9
+
 ## 0.6.8 - 2026-11-02
 
 <!-- npm-release:unreleased:start -->
