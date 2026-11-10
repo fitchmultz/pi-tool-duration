@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## 0.6.10 - 2026-11-10
+
+<!-- npm-release:unreleased:start -->
+<!-- npm-release:unreleased:end -->
+
+- Compare session state without host records in the restoration test (#55) ([fdb671a](https://github.com/fitchmultz/pi-tool-duration/commit/fdb671a03c1e8010efba11cf03c5b337dcd37376))
+
+### What's Changed
+
+- Compare session state without host records in the restoration test by @fitchmultz in https://github.com/fitchmultz/pi-tool-duration/pull/55
+
+**Full Changelog**: https://github.com/fitchmultz/pi-tool-duration/compare/v0.6.9...v0.6.10
+
 ## 0.6.9 - 2026-11-03
 
 <!-- npm-release:unreleased:start -->
