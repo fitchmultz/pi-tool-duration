@@ -65,8 +65,13 @@ nodeTest("native timed results survive reload and cold disk restoration", () => 
       await session.bindExtensions({ onError: error => errors.push(error) });
       return session;
     };
+    // A host may journal its own records at a session start or reload: fitchmultz/pi appends pi.runtime.
+    // The state under test is every other entry, including this package's timing entries.
     const state = session => ({
-      entries: session.sessionManager.getEntries(), activeTools: session.getActiveToolNames(),
+      entries: session.sessionManager.getEntries().filter(
+        entry => entry.type !== "custom" || entry.customType === "pi-tool-duration",
+      ),
+      activeTools: session.getActiveToolNames(),
     });
     const assertTimed = messages => {
       const results = messages.filter(message => message.role === "toolResult");
